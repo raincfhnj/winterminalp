@@ -1,0 +1,1408 @@
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use crate::model::{Direction, TerminalAction, WindowIdentity};
+
+pub const DEFAULT_PREFIX_TIMEOUT: Duration = Duration::from_millis(1_500);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrefixConfig {
+    pub timeout: Duration,
+    pub prefix_chord: KeyChord,
+    pub bindings: HashMap<KeyChord, ShortcutCommand>,
+}
+
+impl PrefixConfig {
+    #[must_use]
+    pub fn new(timeout: Duration) -> Self {
+        Self::with_bindings(
+            timeout,
+            default_prefix_chord(),
+            shortcut_specs()
+                .iter()
+                .map(|spec| (spec.default_chord, spec.command)),
+        )
+    }
+
+    #[must_use]
+    pub fn with_bindings(
+        timeout: Duration,
+        prefix_chord: KeyChord,
+        bindings: impl IntoIterator<Item = (KeyChord, ShortcutCommand)>,
+    ) -> Self {
+        Self {
+            timeout,
+            prefix_chord,
+            bindings: bindings.into_iter().collect(),
+        }
+    }
+}
+
+impl Default for PrefixConfig {
+    fn default() -> Self {
+        Self::new(DEFAULT_PREFIX_TIMEOUT)
+    }
+}
+
+/// Stable identity for balancing a consumed key-down with repeats and key-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PhysicalKey {
+    pub scan_code: u32,
+    pub extended: bool,
+}
+
+impl PhysicalKey {
+    #[must_use]
+    pub const fn new(scan_code: u32, extended: bool) -> Self {
+        Self {
+            scan_code,
+            extended,
+        }
+    }
+}
+
+/// Logical key after the platform adapter has applied the active keyboard layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogicalKey {
+    Character(char),
+    Arrow(Direction),
+    Escape,
+    Tab,
+    Function(u8),
+    Modifier,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub windows: bool,
+}
+
+impl Modifiers {
+    #[must_use]
+    pub const fn new(ctrl: bool, alt: bool, shift: bool, windows: bool) -> Self {
+        Self {
+            ctrl,
+            alt,
+            shift,
+            windows,
+        }
+    }
+
+    #[must_use]
+    pub const fn has_ctrl_or_alt(self) -> bool {
+        self.ctrl || self.alt
+    }
+}
+
+/// A user-configurable key chord after platform normalization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyChord {
+    pub key: LogicalKey,
+    pub modifiers: Modifiers,
+}
+
+impl KeyChord {
+    #[must_use]
+    pub const fn new(key: LogicalKey, modifiers: Modifiers) -> Self {
+        Self { key, modifiers }
+    }
+
+    #[must_use]
+    pub fn matches(self, key: LogicalKey, modifiers: Modifiers) -> bool {
+        self.key == key && self.modifiers == modifiers
+    }
+}
+
+impl fmt::Display for KeyChord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut parts = Vec::with_capacity(4);
+        if self.modifiers.ctrl {
+            parts.push("ctrl".to_owned());
+        }
+        if self.modifiers.alt {
+            parts.push("alt".to_owned());
+        }
+        if self.modifiers.shift {
+            parts.push("shift".to_owned());
+        }
+        parts.push(logical_key_name(self.key));
+        formatter.write_str(&parts.join("+"))
+    }
+}
+
+impl FromStr for KeyChord {
+    type Err = KeyChordParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        parse_key_chord(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyChordParseError {
+    message: String,
+}
+
+impl KeyChordParseError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for KeyChordParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for KeyChordParseError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShortcutCommand {
+    Terminal(TerminalAction),
+    Shutdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShortcutSpec {
+    pub name: &'static str,
+    pub default_chord: KeyChord,
+    pub command: ShortcutCommand,
+    pub allow_disabled: bool,
+}
+
+const fn chord(key: LogicalKey, ctrl: bool, alt: bool, shift: bool) -> KeyChord {
+    KeyChord::new(key, Modifiers::new(ctrl, alt, shift, false))
+}
+
+const fn terminal_spec(
+    name: &'static str,
+    default_chord: KeyChord,
+    action: TerminalAction,
+) -> ShortcutSpec {
+    ShortcutSpec {
+        name,
+        default_chord,
+        command: ShortcutCommand::Terminal(action),
+        allow_disabled: true,
+    }
+}
+
+static SHORTCUT_SPECS: &[ShortcutSpec] = &[
+    terminal_spec(
+        "focus_left",
+        chord(LogicalKey::Arrow(Direction::Left), false, false, false),
+        TerminalAction::FocusPane {
+            direction: Direction::Left,
+        },
+    ),
+    terminal_spec(
+        "focus_right",
+        chord(LogicalKey::Arrow(Direction::Right), false, false, false),
+        TerminalAction::FocusPane {
+            direction: Direction::Right,
+        },
+    ),
+    terminal_spec(
+        "focus_up",
+        chord(LogicalKey::Arrow(Direction::Up), false, false, false),
+        TerminalAction::FocusPane {
+            direction: Direction::Up,
+        },
+    ),
+    terminal_spec(
+        "focus_down",
+        chord(LogicalKey::Arrow(Direction::Down), false, false, false),
+        TerminalAction::FocusPane {
+            direction: Direction::Down,
+        },
+    ),
+    terminal_spec(
+        "split_left",
+        chord(LogicalKey::Arrow(Direction::Left), false, false, true),
+        TerminalAction::SplitPane {
+            direction: Direction::Left,
+        },
+    ),
+    terminal_spec(
+        "split_right",
+        chord(LogicalKey::Arrow(Direction::Right), false, false, true),
+        TerminalAction::SplitPane {
+            direction: Direction::Right,
+        },
+    ),
+    terminal_spec(
+        "split_up",
+        chord(LogicalKey::Arrow(Direction::Up), false, false, true),
+        TerminalAction::SplitPane {
+            direction: Direction::Up,
+        },
+    ),
+    terminal_spec(
+        "split_down",
+        chord(LogicalKey::Arrow(Direction::Down), false, false, true),
+        TerminalAction::SplitPane {
+            direction: Direction::Down,
+        },
+    ),
+    terminal_spec(
+        "resize_left",
+        chord(LogicalKey::Arrow(Direction::Left), true, false, false),
+        TerminalAction::ResizePane {
+            direction: Direction::Left,
+        },
+    ),
+    terminal_spec(
+        "resize_right",
+        chord(LogicalKey::Arrow(Direction::Right), true, false, false),
+        TerminalAction::ResizePane {
+            direction: Direction::Right,
+        },
+    ),
+    terminal_spec(
+        "resize_up",
+        chord(LogicalKey::Arrow(Direction::Up), true, false, false),
+        TerminalAction::ResizePane {
+            direction: Direction::Up,
+        },
+    ),
+    terminal_spec(
+        "resize_down",
+        chord(LogicalKey::Arrow(Direction::Down), true, false, false),
+        TerminalAction::ResizePane {
+            direction: Direction::Down,
+        },
+    ),
+    terminal_spec(
+        "new_tab",
+        chord(LogicalKey::Character('c'), false, false, false),
+        TerminalAction::NewTab,
+    ),
+    terminal_spec(
+        "next_tab",
+        chord(LogicalKey::Character('n'), false, false, false),
+        TerminalAction::NextTab,
+    ),
+    terminal_spec(
+        "previous_tab",
+        chord(LogicalKey::Character('p'), false, false, false),
+        TerminalAction::PreviousTab,
+    ),
+    terminal_spec(
+        "activate_tab_0",
+        chord(LogicalKey::Character('0'), false, false, false),
+        TerminalAction::ActivateTab { index: 0 },
+    ),
+    terminal_spec(
+        "activate_tab_1",
+        chord(LogicalKey::Character('1'), false, false, false),
+        TerminalAction::ActivateTab { index: 1 },
+    ),
+    terminal_spec(
+        "activate_tab_2",
+        chord(LogicalKey::Character('2'), false, false, false),
+        TerminalAction::ActivateTab { index: 2 },
+    ),
+    terminal_spec(
+        "activate_tab_3",
+        chord(LogicalKey::Character('3'), false, false, false),
+        TerminalAction::ActivateTab { index: 3 },
+    ),
+    terminal_spec(
+        "activate_tab_4",
+        chord(LogicalKey::Character('4'), false, false, false),
+        TerminalAction::ActivateTab { index: 4 },
+    ),
+    terminal_spec(
+        "activate_tab_5",
+        chord(LogicalKey::Character('5'), false, false, false),
+        TerminalAction::ActivateTab { index: 5 },
+    ),
+    terminal_spec(
+        "activate_tab_6",
+        chord(LogicalKey::Character('6'), false, false, false),
+        TerminalAction::ActivateTab { index: 6 },
+    ),
+    terminal_spec(
+        "activate_tab_7",
+        chord(LogicalKey::Character('7'), false, false, false),
+        TerminalAction::ActivateTab { index: 7 },
+    ),
+    terminal_spec(
+        "activate_tab_8",
+        chord(LogicalKey::Character('8'), false, false, false),
+        TerminalAction::ActivateTab { index: 8 },
+    ),
+    terminal_spec(
+        "activate_tab_9",
+        chord(LogicalKey::Character('9'), false, false, false),
+        TerminalAction::ActivateTab { index: 9 },
+    ),
+    terminal_spec(
+        "close_pane",
+        chord(LogicalKey::Character('x'), false, false, false),
+        TerminalAction::ClosePane,
+    ),
+    terminal_spec(
+        "toggle_zoom",
+        chord(LogicalKey::Character('z'), false, false, false),
+        TerminalAction::TogglePaneZoom,
+    ),
+    terminal_spec(
+        "rename_tab",
+        chord(LogicalKey::Character(','), false, false, false),
+        TerminalAction::RenameTab,
+    ),
+    terminal_spec(
+        "send_prefix_literal",
+        chord(LogicalKey::Character('b'), false, false, false),
+        TerminalAction::SendPrefixLiteral,
+    ),
+    ShortcutSpec {
+        name: "shutdown",
+        default_chord: chord(LogicalKey::Character('q'), false, false, false),
+        command: ShortcutCommand::Shutdown,
+        allow_disabled: false,
+    },
+];
+
+#[must_use]
+pub const fn default_prefix_chord() -> KeyChord {
+    chord(LogicalKey::Character('b'), true, false, false)
+}
+
+#[must_use]
+pub fn shortcut_specs() -> &'static [ShortcutSpec] {
+    SHORTCUT_SPECS
+}
+
+#[must_use]
+pub const fn is_reserved_system_chord(chord: KeyChord) -> bool {
+    if chord.modifiers.windows {
+        return true;
+    }
+
+    match chord.key {
+        LogicalKey::Tab => chord.modifiers.alt,
+        LogicalKey::Escape => chord.modifiers.alt || chord.modifiers.ctrl,
+        LogicalKey::Function(4) => chord.modifiers.alt,
+        _ => false,
+    }
+}
+
+fn parse_key_chord(value: &str) -> Result<KeyChord, KeyChordParseError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(KeyChordParseError::new("key chord cannot be empty"));
+    }
+
+    let mut modifiers = Modifiers::default();
+    let mut key = None;
+    for raw_part in value.split('+') {
+        let part = raw_part.trim().to_ascii_lowercase();
+        if part.is_empty() {
+            return Err(KeyChordParseError::new(format!(
+                "invalid empty token in {value:?}"
+            )));
+        }
+        match part.as_str() {
+            "ctrl" | "control" => set_modifier(&mut modifiers.ctrl, "ctrl")?,
+            "alt" => set_modifier(&mut modifiers.alt, "alt")?,
+            "shift" => set_modifier(&mut modifiers.shift, "shift")?,
+            "win" | "windows" | "super" => {
+                return Err(KeyChordParseError::new(
+                    "the Windows modifier is reserved and cannot be configured",
+                ));
+            }
+            _ => {
+                if key.is_some() {
+                    return Err(KeyChordParseError::new(format!(
+                        "a chord must contain exactly one non-modifier key: {value:?}"
+                    )));
+                }
+                key = Some(parse_logical_key_name(&part)?);
+            }
+        }
+    }
+
+    let key = key
+        .ok_or_else(|| KeyChordParseError::new(format!("a chord must include a key: {value:?}")))?;
+    Ok(KeyChord::new(key, modifiers))
+}
+
+fn set_modifier(target: &mut bool, name: &str) -> Result<(), KeyChordParseError> {
+    if *target {
+        return Err(KeyChordParseError::new(format!(
+            "modifier {name:?} appears more than once"
+        )));
+    }
+    *target = true;
+    Ok(())
+}
+
+fn parse_logical_key_name(value: &str) -> Result<LogicalKey, KeyChordParseError> {
+    let named = match value {
+        "left" => Some(LogicalKey::Arrow(Direction::Left)),
+        "right" => Some(LogicalKey::Arrow(Direction::Right)),
+        "up" => Some(LogicalKey::Arrow(Direction::Up)),
+        "down" => Some(LogicalKey::Arrow(Direction::Down)),
+        "escape" | "esc" => Some(LogicalKey::Escape),
+        "tab" => Some(LogicalKey::Tab),
+        "space" => Some(LogicalKey::Character(' ')),
+        "comma" => Some(LogicalKey::Character(',')),
+        "period" | "dot" => Some(LogicalKey::Character('.')),
+        "semicolon" => Some(LogicalKey::Character(';')),
+        "slash" => Some(LogicalKey::Character('/')),
+        "backslash" => Some(LogicalKey::Character('\\')),
+        "minus" => Some(LogicalKey::Character('-')),
+        "equals" => Some(LogicalKey::Character('=')),
+        "quote" => Some(LogicalKey::Character('\'')),
+        "backtick" => Some(LogicalKey::Character('`')),
+        "left-bracket" | "left_bracket" => Some(LogicalKey::Character('[')),
+        "right-bracket" | "right_bracket" => Some(LogicalKey::Character(']')),
+        _ => None,
+    };
+    if let Some(key) = named {
+        return Ok(key);
+    }
+
+    if let Some(number) = value
+        .strip_prefix('f')
+        .and_then(|number| number.parse::<u8>().ok())
+        .filter(|number| (1..=12).contains(number))
+    {
+        return Ok(LogicalKey::Function(number));
+    }
+
+    let mut characters = value.chars();
+    if let (Some(character), None) = (characters.next(), characters.next())
+        && (character.is_ascii_alphanumeric() || ",.;/\\-='[]`".contains(character))
+    {
+        return Ok(LogicalKey::Character(character.to_ascii_lowercase()));
+    }
+
+    Err(KeyChordParseError::new(format!(
+        "unsupported key {value:?}; use a-z, 0-9, arrows, F1-F12, or a documented key name"
+    )))
+}
+
+fn logical_key_name(key: LogicalKey) -> String {
+    match key {
+        LogicalKey::Character(' ') => "space".to_owned(),
+        LogicalKey::Character(',') => "comma".to_owned(),
+        LogicalKey::Character('.') => "period".to_owned(),
+        LogicalKey::Character(';') => "semicolon".to_owned(),
+        LogicalKey::Character('/') => "slash".to_owned(),
+        LogicalKey::Character('\\') => "backslash".to_owned(),
+        LogicalKey::Character('-') => "minus".to_owned(),
+        LogicalKey::Character('=') => "equals".to_owned(),
+        LogicalKey::Character('\'') => "quote".to_owned(),
+        LogicalKey::Character('`') => "backtick".to_owned(),
+        LogicalKey::Character('[') => "left-bracket".to_owned(),
+        LogicalKey::Character(']') => "right-bracket".to_owned(),
+        LogicalKey::Character(character) => character.to_string(),
+        LogicalKey::Arrow(Direction::Left) => "left".to_owned(),
+        LogicalKey::Arrow(Direction::Right) => "right".to_owned(),
+        LogicalKey::Arrow(Direction::Up) => "up".to_owned(),
+        LogicalKey::Arrow(Direction::Down) => "down".to_owned(),
+        LogicalKey::Escape => "escape".to_owned(),
+        LogicalKey::Tab => "tab".to_owned(),
+        LogicalKey::Function(number) => format!("f{number}"),
+        LogicalKey::Modifier => "modifier".to_owned(),
+        LogicalKey::Other => "other".to_owned(),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyTransition {
+    Down,
+    Up,
+}
+
+/// Normalized input consumed by [`PrefixMachine`].
+///
+/// `foreground_terminal` is `Some` only when the platform layer has verified a
+/// supported Windows Terminal foreground window. A non-Terminal foreground is
+/// represented by `None` and is never captured while the machine is idle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyEvent {
+    pub physical_key: PhysicalKey,
+    pub logical_key: LogicalKey,
+    pub transition: KeyTransition,
+    pub modifiers: Modifiers,
+    pub injected: bool,
+    pub foreground_terminal: Option<WindowIdentity>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyDisposition {
+    PassThrough,
+    Consume,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrefixCommand {
+    Dispatch {
+        target: WindowIdentity,
+        action: TerminalAction,
+    },
+    Shutdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelReason {
+    Escape,
+    UnknownKey,
+    Timeout,
+    ForegroundChanged,
+    SystemShortcut,
+    PointerInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrefixOutcome {
+    pub disposition: KeyDisposition,
+    pub command: Option<PrefixCommand>,
+    pub cancellation: Option<CancelReason>,
+}
+
+impl PrefixOutcome {
+    const fn pass_through(cancellation: Option<CancelReason>) -> Self {
+        Self {
+            disposition: KeyDisposition::PassThrough,
+            command: None,
+            cancellation,
+        }
+    }
+
+    const fn consume(command: Option<PrefixCommand>, cancellation: Option<CancelReason>) -> Self {
+        Self {
+            disposition: KeyDisposition::Consume,
+            command,
+            cancellation,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrefixState {
+    Idle,
+    Armed {
+        target: WindowIdentity,
+        deadline: Instant,
+        prefix_key: PhysicalKey,
+        prefix_key_released: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct PrefixMachine {
+    config: PrefixConfig,
+    state: PrefixState,
+    suppressed_keys: HashSet<PhysicalKey>,
+}
+
+impl PrefixMachine {
+    #[must_use]
+    pub fn new(config: PrefixConfig) -> Self {
+        Self {
+            config,
+            state: PrefixState::Idle,
+            suppressed_keys: HashSet::new(),
+        }
+    }
+
+    #[must_use]
+    pub const fn config(&self) -> &PrefixConfig {
+        &self.config
+    }
+
+    #[must_use]
+    pub const fn state(&self) -> PrefixState {
+        self.state
+    }
+
+    #[must_use]
+    pub const fn is_armed(&self) -> bool {
+        matches!(self.state, PrefixState::Armed { .. })
+    }
+
+    #[must_use]
+    pub const fn deadline(&self) -> Option<Instant> {
+        match self.state {
+            PrefixState::Idle => None,
+            PrefixState::Armed { deadline, .. } => Some(deadline),
+        }
+    }
+
+    /// Handles one normalized keyboard event and synchronously decides whether
+    /// the low-level hook must pass it on or consume it.
+    #[must_use]
+    pub fn handle_key_event(&mut self, event: KeyEvent, now: Instant) -> PrefixOutcome {
+        let mut cancellation = self.expire(now);
+
+        if self.cancel_if_foreground_changed(event.foreground_terminal) {
+            cancellation = Some(CancelReason::ForegroundChanged);
+        }
+
+        // Injected bridge input is never interpreted as user input or added to
+        // the suppression ledger.
+        if event.injected {
+            return PrefixOutcome::pass_through(cancellation);
+        }
+
+        if self.suppressed_keys.contains(&event.physical_key) {
+            if event.transition == KeyTransition::Up {
+                self.suppressed_keys.remove(&event.physical_key);
+                if let PrefixState::Armed {
+                    prefix_key,
+                    ref mut prefix_key_released,
+                    ..
+                } = self.state
+                {
+                    if prefix_key == event.physical_key {
+                        *prefix_key_released = true;
+                    }
+                }
+            }
+
+            return PrefixOutcome::consume(None, cancellation);
+        }
+
+        if event.transition == KeyTransition::Up {
+            return PrefixOutcome::pass_through(cancellation);
+        }
+
+        match self.state {
+            PrefixState::Idle => self.handle_idle_key_down(event, now, cancellation),
+            PrefixState::Armed {
+                target,
+                prefix_key_released,
+                ..
+            } => self.handle_armed_key_down(event, target, prefix_key_released),
+        }
+    }
+
+    /// Expires an armed prefix when its deadline is reached.
+    #[must_use]
+    pub fn expire(&mut self, now: Instant) -> Option<CancelReason> {
+        if matches!(
+            self.state,
+            PrefixState::Armed { deadline, .. } if now >= deadline
+        ) {
+            self.state = PrefixState::Idle;
+            Some(CancelReason::Timeout)
+        } else {
+            None
+        }
+    }
+
+    /// Cancels the prefix on mouse- or system-driven foreground changes.
+    #[must_use]
+    pub fn observe_foreground(
+        &mut self,
+        foreground_terminal: Option<WindowIdentity>,
+    ) -> Option<CancelReason> {
+        self.cancel_if_foreground_changed(foreground_terminal)
+            .then_some(CancelReason::ForegroundChanged)
+    }
+
+    /// Cancels an armed prefix after an unrelated pointer interaction.
+    /// Already-suppressed key-up events remain balanced by the suppression ledger.
+    #[must_use]
+    pub fn cancel(&mut self, reason: CancelReason) -> Option<CancelReason> {
+        if self.is_armed() {
+            self.state = PrefixState::Idle;
+            Some(reason)
+        } else {
+            None
+        }
+    }
+
+    fn handle_idle_key_down(
+        &mut self,
+        event: KeyEvent,
+        now: Instant,
+        cancellation: Option<CancelReason>,
+    ) -> PrefixOutcome {
+        let Some(target) = event.foreground_terminal else {
+            return PrefixOutcome::pass_through(cancellation);
+        };
+
+        if !self
+            .config
+            .prefix_chord
+            .matches(event.logical_key, event.modifiers)
+        {
+            return PrefixOutcome::pass_through(cancellation);
+        }
+
+        let deadline = now.checked_add(self.config.timeout).unwrap_or(now);
+        self.suppressed_keys.insert(event.physical_key);
+        self.state = PrefixState::Armed {
+            target,
+            deadline,
+            prefix_key: event.physical_key,
+            prefix_key_released: false,
+        };
+
+        PrefixOutcome::consume(None, cancellation)
+    }
+
+    fn handle_armed_key_down(
+        &mut self,
+        event: KeyEvent,
+        target: WindowIdentity,
+        prefix_key_released: bool,
+    ) -> PrefixOutcome {
+        if is_system_shortcut(event.logical_key, event.modifiers) {
+            self.state = PrefixState::Idle;
+            return PrefixOutcome::pass_through(Some(CancelReason::SystemShortcut));
+        }
+
+        if event.logical_key == LogicalKey::Modifier {
+            return PrefixOutcome::pass_through(None);
+        }
+
+        if event.logical_key == LogicalKey::Escape {
+            self.consume_key(event.physical_key);
+            self.state = PrefixState::Idle;
+            return PrefixOutcome::consume(None, Some(CancelReason::Escape));
+        }
+
+        let command = self
+            .config
+            .bindings
+            .get(&KeyChord::new(event.logical_key, event.modifiers))
+            .copied();
+        if matches!(
+            command,
+            Some(ShortcutCommand::Terminal(TerminalAction::SendPrefixLiteral))
+        ) && !prefix_key_released
+        {
+            return self.consume_unknown(event.physical_key);
+        }
+
+        let command = command.map(|command| match command {
+            ShortcutCommand::Terminal(action) => PrefixCommand::Dispatch { target, action },
+            ShortcutCommand::Shutdown => PrefixCommand::Shutdown,
+        });
+
+        let Some(command) = command else {
+            return self.consume_unknown(event.physical_key);
+        };
+
+        self.consume_key(event.physical_key);
+        self.state = PrefixState::Idle;
+        PrefixOutcome::consume(Some(command), None)
+    }
+
+    fn consume_unknown(&mut self, physical_key: PhysicalKey) -> PrefixOutcome {
+        self.consume_key(physical_key);
+        self.state = PrefixState::Idle;
+        PrefixOutcome::consume(None, Some(CancelReason::UnknownKey))
+    }
+
+    fn consume_key(&mut self, physical_key: PhysicalKey) {
+        self.suppressed_keys.insert(physical_key);
+    }
+
+    fn cancel_if_foreground_changed(
+        &mut self,
+        foreground_terminal: Option<WindowIdentity>,
+    ) -> bool {
+        let PrefixState::Armed { target, .. } = self.state else {
+            return false;
+        };
+
+        if foreground_terminal == Some(target) {
+            return false;
+        }
+
+        self.state = PrefixState::Idle;
+        true
+    }
+}
+
+impl Default for PrefixMachine {
+    fn default() -> Self {
+        Self::new(PrefixConfig::default())
+    }
+}
+
+#[must_use]
+fn is_system_shortcut(key: LogicalKey, modifiers: Modifiers) -> bool {
+    is_reserved_system_chord(KeyChord::new(key, modifiers))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::TerminalChannel;
+
+    const PREFIX_KEY: PhysicalKey = PhysicalKey::new(0x30, false);
+    const COMMAND_KEY: PhysicalKey = PhysicalKey::new(0x2E, false);
+
+    fn target(hwnd: isize) -> WindowIdentity {
+        WindowIdentity {
+            hwnd,
+            process_id: hwnd as u32 + 100,
+            process_started_at_100ns: hwnd as u64 + 1_000,
+            channel: TerminalChannel::Stable,
+        }
+    }
+
+    fn event(
+        physical_key: PhysicalKey,
+        logical_key: LogicalKey,
+        transition: KeyTransition,
+        modifiers: Modifiers,
+        foreground_terminal: Option<WindowIdentity>,
+    ) -> KeyEvent {
+        KeyEvent {
+            physical_key,
+            logical_key,
+            transition,
+            modifiers,
+            injected: false,
+            foreground_terminal,
+        }
+    }
+
+    fn prefix_event(transition: KeyTransition, terminal: Option<WindowIdentity>) -> KeyEvent {
+        event(
+            PREFIX_KEY,
+            LogicalKey::Character('b'),
+            transition,
+            Modifiers::new(true, false, false, false),
+            terminal,
+        )
+    }
+
+    fn arm(machine: &mut PrefixMachine, now: Instant, terminal: WindowIdentity) {
+        let down = machine.handle_key_event(prefix_event(KeyTransition::Down, Some(terminal)), now);
+        assert_eq!(down.disposition, KeyDisposition::Consume);
+        assert!(machine.is_armed());
+
+        let up = machine.handle_key_event(
+            prefix_event(KeyTransition::Up, Some(terminal)),
+            now + Duration::from_millis(1),
+        );
+        assert_eq!(up.disposition, KeyDisposition::Consume);
+        assert!(machine.is_armed());
+    }
+
+    #[test]
+    fn default_timeout_is_fifteen_hundred_milliseconds() {
+        assert_eq!(
+            PrefixConfig::default().timeout,
+            Duration::from_millis(1_500)
+        );
+        assert_eq!(PrefixMachine::default().config(), &PrefixConfig::default());
+    }
+
+    #[test]
+    fn parses_and_formats_documented_key_chords() {
+        let cases = [
+            "ctrl+b",
+            "alt+shift+k",
+            "ctrl+left",
+            "space",
+            "comma",
+            "f12",
+            "ctrl+left-bracket",
+        ];
+
+        for value in cases {
+            let chord = value.parse::<KeyChord>().expect("documented chord");
+            assert_eq!(chord.to_string(), value);
+        }
+        assert!("win+k".parse::<KeyChord>().is_err());
+        assert!("ctrl+alt".parse::<KeyChord>().is_err());
+        assert!("ctrl+a+b".parse::<KeyChord>().is_err());
+    }
+
+    #[test]
+    fn shortcut_specs_are_unique_and_complete() {
+        let names = shortcut_specs()
+            .iter()
+            .map(|spec| spec.name)
+            .collect::<HashSet<_>>();
+        let chords = shortcut_specs()
+            .iter()
+            .map(|spec| spec.default_chord)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(shortcut_specs().len(), 30);
+        assert_eq!(names.len(), shortcut_specs().len());
+        assert_eq!(chords.len(), shortcut_specs().len());
+    }
+
+    #[test]
+    fn custom_prefix_and_command_chord_drive_the_machine() {
+        let now = Instant::now();
+        let terminal = target(20);
+        let config = PrefixConfig::with_bindings(
+            Duration::from_millis(500),
+            "alt+a".parse().expect("valid prefix"),
+            [(
+                "t".parse().expect("valid command chord"),
+                ShortcutCommand::Terminal(TerminalAction::NewTab),
+            )],
+        );
+        let mut machine = PrefixMachine::new(config);
+
+        let prefix_down = machine.handle_key_event(
+            event(
+                PREFIX_KEY,
+                LogicalKey::Character('a'),
+                KeyTransition::Down,
+                Modifiers::new(false, true, false, false),
+                Some(terminal),
+            ),
+            now,
+        );
+        assert_eq!(prefix_down.disposition, KeyDisposition::Consume);
+        let _ = machine.handle_key_event(
+            event(
+                PREFIX_KEY,
+                LogicalKey::Character('a'),
+                KeyTransition::Up,
+                Modifiers::new(false, true, false, false),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(1),
+        );
+        let command = machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Character('t'),
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(2),
+        );
+
+        assert_eq!(
+            command.command,
+            Some(PrefixCommand::Dispatch {
+                target: terminal,
+                action: TerminalAction::NewTab,
+            })
+        );
+    }
+
+    #[test]
+    fn prefix_only_arms_in_a_verified_terminal() {
+        let now = Instant::now();
+        let mut machine = PrefixMachine::default();
+
+        let outside = machine.handle_key_event(prefix_event(KeyTransition::Down, None), now);
+        assert_eq!(outside.disposition, KeyDisposition::PassThrough);
+        assert!(!machine.is_armed());
+
+        let inside =
+            machine.handle_key_event(prefix_event(KeyTransition::Down, Some(target(1))), now);
+        assert_eq!(inside.disposition, KeyDisposition::Consume);
+        assert!(machine.is_armed());
+        assert_eq!(machine.deadline(), now.checked_add(DEFAULT_PREFIX_TIMEOUT));
+    }
+
+    #[test]
+    fn injected_prefix_passes_through() {
+        let mut machine = PrefixMachine::default();
+        let mut injected = prefix_event(KeyTransition::Down, Some(target(1)));
+        injected.injected = true;
+
+        let outcome = machine.handle_key_event(injected, Instant::now());
+
+        assert_eq!(outcome.disposition, KeyDisposition::PassThrough);
+        assert!(!machine.is_armed());
+    }
+
+    #[test]
+    fn arrows_map_to_focus_split_and_resize() {
+        let now = Instant::now();
+        let terminal = target(1);
+        let cases = [
+            (
+                Modifiers::default(),
+                TerminalAction::FocusPane {
+                    direction: Direction::Left,
+                },
+            ),
+            (
+                Modifiers::new(false, false, true, false),
+                TerminalAction::SplitPane {
+                    direction: Direction::Left,
+                },
+            ),
+            (
+                Modifiers::new(true, false, false, false),
+                TerminalAction::ResizePane {
+                    direction: Direction::Left,
+                },
+            ),
+        ];
+
+        for (modifiers, expected_action) in cases {
+            let mut machine = PrefixMachine::default();
+            arm(&mut machine, now, terminal);
+            let outcome = machine.handle_key_event(
+                event(
+                    COMMAND_KEY,
+                    LogicalKey::Arrow(Direction::Left),
+                    KeyTransition::Down,
+                    modifiers,
+                    Some(terminal),
+                ),
+                now + Duration::from_millis(2),
+            );
+
+            assert_eq!(
+                outcome.command,
+                Some(PrefixCommand::Dispatch {
+                    target: terminal,
+                    action: expected_action,
+                })
+            );
+            assert!(!machine.is_armed());
+        }
+    }
+
+    #[test]
+    fn character_commands_cover_tabs_panes_zoom_rename_and_shutdown() {
+        let now = Instant::now();
+        let terminal = target(2);
+        let cases = [
+            ('c', Some(TerminalAction::NewTab)),
+            ('n', Some(TerminalAction::NextTab)),
+            ('p', Some(TerminalAction::PreviousTab)),
+            ('7', Some(TerminalAction::ActivateTab { index: 7 })),
+            ('x', Some(TerminalAction::ClosePane)),
+            ('z', Some(TerminalAction::TogglePaneZoom)),
+            (',', Some(TerminalAction::RenameTab)),
+            ('q', None),
+        ];
+
+        for (character, action) in cases {
+            let mut machine = PrefixMachine::default();
+            arm(&mut machine, now, terminal);
+            let outcome = machine.handle_key_event(
+                event(
+                    COMMAND_KEY,
+                    LogicalKey::Character(character),
+                    KeyTransition::Down,
+                    Modifiers::default(),
+                    Some(terminal),
+                ),
+                now + Duration::from_millis(2),
+            );
+
+            let expected = action.map_or(Some(PrefixCommand::Shutdown), |action| {
+                Some(PrefixCommand::Dispatch {
+                    target: terminal,
+                    action,
+                })
+            });
+            assert_eq!(outcome.command, expected);
+            assert_eq!(outcome.disposition, KeyDisposition::Consume);
+        }
+    }
+
+    #[test]
+    fn consumed_key_repeats_and_key_up_are_also_consumed() {
+        let now = Instant::now();
+        let terminal = target(3);
+        let mut machine = PrefixMachine::default();
+        arm(&mut machine, now, terminal);
+        let command = event(
+            COMMAND_KEY,
+            LogicalKey::Character('c'),
+            KeyTransition::Down,
+            Modifiers::default(),
+            Some(terminal),
+        );
+
+        assert!(
+            machine
+                .handle_key_event(command, now + Duration::from_millis(2))
+                .command
+                .is_some()
+        );
+        let repeat = machine.handle_key_event(command, now + Duration::from_millis(3));
+        assert_eq!(repeat.disposition, KeyDisposition::Consume);
+        assert_eq!(repeat.command, None);
+
+        let mut key_up = command;
+        key_up.transition = KeyTransition::Up;
+        assert_eq!(
+            machine
+                .handle_key_event(key_up, now + Duration::from_millis(4))
+                .disposition,
+            KeyDisposition::Consume
+        );
+        assert_eq!(
+            machine
+                .handle_key_event(command, now + Duration::from_millis(5))
+                .disposition,
+            KeyDisposition::PassThrough
+        );
+    }
+
+    #[test]
+    fn prefix_repeat_does_not_extend_the_deadline_or_send_literal() {
+        let now = Instant::now();
+        let terminal = target(4);
+        let mut machine = PrefixMachine::default();
+        let prefix = prefix_event(KeyTransition::Down, Some(terminal));
+
+        let _ = machine.handle_key_event(prefix, now);
+        let deadline = machine.deadline();
+        let repeat = machine.handle_key_event(prefix, now + Duration::from_millis(100));
+
+        assert_eq!(repeat.disposition, KeyDisposition::Consume);
+        assert_eq!(repeat.command, None);
+        assert_eq!(machine.deadline(), deadline);
+    }
+
+    #[test]
+    fn released_prefix_then_b_sends_literal() {
+        let now = Instant::now();
+        let terminal = target(5);
+        let mut machine = PrefixMachine::default();
+        arm(&mut machine, now, terminal);
+
+        let outcome = machine.handle_key_event(
+            event(
+                PREFIX_KEY,
+                LogicalKey::Character('b'),
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(2),
+        );
+
+        assert_eq!(
+            outcome.command,
+            Some(PrefixCommand::Dispatch {
+                target: terminal,
+                action: TerminalAction::SendPrefixLiteral,
+            })
+        );
+    }
+
+    #[test]
+    fn escape_and_unknown_keys_are_consumed_and_cancel() {
+        let now = Instant::now();
+        let terminal = target(6);
+
+        let mut escape_machine = PrefixMachine::default();
+        arm(&mut escape_machine, now, terminal);
+        let escape = escape_machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Escape,
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(2),
+        );
+        assert_eq!(escape.disposition, KeyDisposition::Consume);
+        assert_eq!(escape.cancellation, Some(CancelReason::Escape));
+
+        let mut unknown_machine = PrefixMachine::default();
+        arm(&mut unknown_machine, now, terminal);
+        let unknown = unknown_machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Character('v'),
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(2),
+        );
+        assert_eq!(unknown.disposition, KeyDisposition::Consume);
+        assert_eq!(unknown.cancellation, Some(CancelReason::UnknownKey));
+    }
+
+    #[test]
+    fn timeout_wins_at_the_deadline_and_does_not_replay_prefix() {
+        let now = Instant::now();
+        let terminal = target(7);
+        let mut machine = PrefixMachine::new(PrefixConfig::new(Duration::from_millis(10)));
+        arm(&mut machine, now, terminal);
+
+        let outcome = machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Character('c'),
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(10),
+        );
+
+        assert_eq!(outcome.disposition, KeyDisposition::PassThrough);
+        assert_eq!(outcome.command, None);
+        assert_eq!(outcome.cancellation, Some(CancelReason::Timeout));
+    }
+
+    #[test]
+    fn foreground_change_cancels_and_passes_the_new_apps_key() {
+        let now = Instant::now();
+        let original = target(8);
+        let mut machine = PrefixMachine::default();
+        arm(&mut machine, now, original);
+
+        let outcome = machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Character('c'),
+                KeyTransition::Down,
+                Modifiers::default(),
+                Some(target(9)),
+            ),
+            now + Duration::from_millis(2),
+        );
+
+        assert_eq!(outcome.disposition, KeyDisposition::PassThrough);
+        assert_eq!(outcome.cancellation, Some(CancelReason::ForegroundChanged));
+        assert!(!machine.is_armed());
+    }
+
+    #[test]
+    fn pointer_input_cancels_an_armed_prefix_without_releasing_suppressed_keys() {
+        let now = Instant::now();
+        let terminal = target(81);
+        let mut machine = PrefixMachine::default();
+        let _ = machine.handle_key_event(prefix_event(KeyTransition::Down, Some(terminal)), now);
+
+        assert_eq!(
+            machine.cancel(CancelReason::PointerInput),
+            Some(CancelReason::PointerInput)
+        );
+        assert!(!machine.is_armed());
+        let key_up = machine.handle_key_event(
+            prefix_event(KeyTransition::Up, Some(terminal)),
+            now + Duration::from_millis(1),
+        );
+        assert_eq!(key_up.disposition, KeyDisposition::Consume);
+        assert_eq!(machine.cancel(CancelReason::PointerInput), None);
+    }
+
+    #[test]
+    fn consumed_prefix_key_up_stays_consumed_after_foreground_change() {
+        let now = Instant::now();
+        let terminal = target(10);
+        let mut machine = PrefixMachine::default();
+        let _ = machine.handle_key_event(prefix_event(KeyTransition::Down, Some(terminal)), now);
+
+        let outcome = machine.handle_key_event(
+            prefix_event(KeyTransition::Up, None),
+            now + Duration::from_millis(1),
+        );
+
+        assert_eq!(outcome.disposition, KeyDisposition::Consume);
+        assert_eq!(outcome.cancellation, Some(CancelReason::ForegroundChanged));
+    }
+
+    #[test]
+    fn system_shortcuts_cancel_but_pass_through() {
+        let now = Instant::now();
+        let terminal = target(11);
+        let cases = [
+            (LogicalKey::Tab, Modifiers::new(false, true, false, false)),
+            (
+                LogicalKey::Escape,
+                Modifiers::new(true, false, false, false),
+            ),
+            (
+                LogicalKey::Function(4),
+                Modifiers::new(false, true, false, false),
+            ),
+            (
+                LogicalKey::Character('r'),
+                Modifiers::new(false, false, false, true),
+            ),
+        ];
+
+        for (logical_key, modifiers) in cases {
+            let mut machine = PrefixMachine::default();
+            arm(&mut machine, now, terminal);
+            let outcome = machine.handle_key_event(
+                event(
+                    COMMAND_KEY,
+                    logical_key,
+                    KeyTransition::Down,
+                    modifiers,
+                    Some(terminal),
+                ),
+                now + Duration::from_millis(2),
+            );
+
+            assert_eq!(outcome.disposition, KeyDisposition::PassThrough);
+            assert_eq!(outcome.cancellation, Some(CancelReason::SystemShortcut));
+        }
+    }
+
+    #[test]
+    fn modifier_only_and_injected_events_do_not_steal_the_prefix() {
+        let now = Instant::now();
+        let terminal = target(12);
+        let mut machine = PrefixMachine::default();
+        arm(&mut machine, now, terminal);
+
+        let modifier = machine.handle_key_event(
+            event(
+                COMMAND_KEY,
+                LogicalKey::Modifier,
+                KeyTransition::Down,
+                Modifiers::new(false, false, true, false),
+                Some(terminal),
+            ),
+            now + Duration::from_millis(2),
+        );
+        assert_eq!(modifier.disposition, KeyDisposition::PassThrough);
+        assert!(machine.is_armed());
+
+        let mut injected = event(
+            COMMAND_KEY,
+            LogicalKey::Character('c'),
+            KeyTransition::Down,
+            Modifiers::default(),
+            Some(terminal),
+        );
+        injected.injected = true;
+        let outcome = machine.handle_key_event(injected, now + Duration::from_millis(3));
+        assert_eq!(outcome.disposition, KeyDisposition::PassThrough);
+        assert!(machine.is_armed());
+    }
+
+    #[test]
+    fn foreground_observer_cancels_mouse_driven_window_changes() {
+        let now = Instant::now();
+        let terminal = target(13);
+        let mut machine = PrefixMachine::default();
+        arm(&mut machine, now, terminal);
+
+        assert_eq!(
+            machine.observe_foreground(None),
+            Some(CancelReason::ForegroundChanged)
+        );
+        assert!(!machine.is_armed());
+    }
+}

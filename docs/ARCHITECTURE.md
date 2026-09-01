@@ -1,0 +1,191 @@
+# WinTerminal++ v0.2 架构
+
+## 1. 架构结论
+
+WinTerminal++ 是 Windows Terminal 的无界面输入增强层，不是终端模拟器。
+
+- Windows Terminal：唯一 UI、终端渲染、窗格树、标签页和 Shell 生命周期权威。
+- Rust Prefix Core：两段式快捷键状态权威。
+- Rust Integration：产品配置、Action fragment 和用户 keybinding 事务权威。
+- UI Automation Observer：只读、可丢弃的原生 `TermControl` 几何快照。
+- Win32 Adapter：键盘/鼠标 Hook、前台身份、输入注入和单实例边界。
+- Pointer Reducer：纯拖拽捕获状态与移动距离换算；不直接访问 Hook、UIA 或队列。
+- Action Worker：串行执行键盘动作和已合并的拖拽 resize 批次。
+
+不存在 WebView、前端状态副本、Tauri IPC、PTY 管理器或应用自有布局树。鼠标拖动只从 UI Automation 矩形推导当前分隔线，快照不持久化、不参与 split/close 决策，也不是第二份布局权威。
+
+## 2. 运行结构
+
+    Physical keyboard
+          │
+          ▼
+    WH_KEYBOARD_LL hook thread
+          │ raw event
+          ▼
+    PrefixMachine
+      ├── PassThrough ───────────────► current application
+      └── Consume + Dispatch
+                     │ bounded queue
+                     ▼
+                action worker
+                     │ revalidate HWND/PID/start marker
+                     ▼
+                SendInput hidden chord
+                     │
+                     ▼
+             Windows Terminal Action
+                     │
+                     ▼
+       native tab / pane / renderer / shell
+
+    Physical mouse
+          │
+          ▼
+    WH_MOUSE_LL hook ──► PointerDragState
+          │                       │ idle / external drag / pass through
+          │ resize batch          ▼
+          └──────────────► bounded action queue
+                                  │
+                                  ▼
+                       UIA focus native TermControl once
+                                  │
+                                  ▼
+                  native resizePane action × batch steps
+
+## 3. 线程与性能
+
+- Hook 线程同时拥有低级键盘/鼠标 Hook、Windows 消息循环和 Hook 生命周期。
+- Hook 回调只更新内存状态并执行 `try_send`，不做 IO、进程查询或等待。
+- Desktop Observer 提供前台 Terminal 身份，并按独立低频周期读取原生窗格矩形；COM/UI Automation 不进入 Hook 回调。
+- 分隔线命中、拖动残差和 5% 原生步长换算位于纯 Rust `pane_layout`，不依赖 Win32。
+- `controller/pointer` 只决定是否捕获、何时取消以及一个拖拽批次的净 resize 意图；普通悬停和从 Explorer 开始的外部拖放永远透传。
+- Action worker 串行派发，避免多个合成 chord 交错；一个拖拽批次只做一次 UIA 聚焦，再发送对应数量的原生 resize chord，避免把同次移动拆成多个昂贵任务。
+- 队列固定容量；队列满时动作失败但键盘系统不被阻塞。
+- Hook 使用 RAII 在消息循环退出时调用 `UnhookWindowsHookEx`。
+
+Windows 可能静默移除超时的低级 Hook，因此所有慢操作都必须移出回调。[LowLevelKeyboardProc](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)
+
+## 4. Prefix 状态
+
+    Idle
+      │ WT foreground + Ctrl+B down / consume
+      ▼
+    Armed(target, deadline)
+      ├── mapped key / consume + action ──► Idle
+      ├── B / consume + literal Ctrl+B ──► Idle
+      ├── Escape / consume ──────────────► Idle
+      ├── unknown / consume ─────────────► Idle
+      ├── timeout ───────────────────────► Idle
+      ├── foreground changed ────────────► Idle
+      └── system switch key / pass ──────► Idle
+
+状态机记录已吞按键，确保其 repeat 和 keyup 不会泄漏到 Shell。
+
+## 5. Action Bridge
+
+Windows Terminal keybinding 只能表达“多个 modifier + 一个非 modifier 键”，不能表达两阶段 Prefix。`multipleActions` 也只是一次按键执行多个 Action。因此 Rust 负责 Prefix，Terminal 只接收隐藏单 chord。[Windows Terminal Actions](https://learn.microsoft.com/en-us/windows/terminal/customize-settings/actions)
+
+Bridge 分两层：
+
+1. `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WinTerminalPP\actions.json` 提供命名 Action。
+2. 每个 Terminal 通道的用户 `settings.json` 只绑定产品隐藏 chord 到这些 Action ID。
+
+桥接表使用 F13、F14、F15、F18–F24 的三组修饰键组合。F16/F17 已在 Stable 1.24 真实输入链路中判定为不可靠并由单元测试禁止重新进入托管表。
+
+官方自 1.21 起允许 fragment 提供 Action，但明确禁止 fragment 注入 keys；这是防止第三方静默劫持快捷键的安全边界。[Action fragment implementation](https://github.com/microsoft/terminal/pull/16185)
+
+## 6. 前台身份与派发
+
+捕获 Prefix 时保存：
+
+- 顶层 HWND。
+- `WindowsTerminal.exe` PID。
+- 进程启动时间标记。
+- Stable、Preview、Canary、Unpackaged 或 Portable 通道。
+
+派发前重新读取前台窗口并逐字段比较。任何字段变化都返回 `ForegroundChanged`，不调用 `SendInput`。
+
+`wt.exe --window 0` 只表示最近使用窗口，不能替代该校验。[Windows Terminal command line arguments](https://learn.microsoft.com/en-us/windows/terminal/command-line-arguments)
+
+## 7. 配置持久化
+
+### 应用配置
+
+`%LOCALAPPDATA%\WinTerminalPP\config.toml`
+
+```toml
+schema_version = 2
+prefix_timeout_ms = 1500
+launch_terminal_on_start = true
+prefix = "ctrl+b"
+
+[shortcuts]
+focus_left = "left"
+split_right = "shift+right"
+resize_up = "ctrl+up"
+new_tab = "c"
+shutdown = "q"
+
+[mouse_resize]
+enabled = true
+divider_hit_slop_px = 3
+geometry_poll_interval_ms = 100
+
+```
+
+创建配置时使用 create-new；已有配置解析失败时保留原文件，不自动覆盖。`shortcuts` 是按动作名合并的 override 表，缺失项使用 Rust 中唯一的默认 `ShortcutSpec`。旧 schema 1 文件缺少 `prefix`、`shortcuts` 或 `[mouse_resize]` 时仍能加载默认值，并只在内存中迁移为 schema 2；不会隐式改写用户文件。
+
+启动控制器前，Config 层把字符串解析为规范化 `KeyChord`，验证未知动作、重复 chord、系统保留组合和必需退出键，再一次性构造不可变的 `PrefixConfig`。Hook 回调只查内存表，不读取 TOML；修改配置需要重启控制器。
+
+### Terminal 配置
+
+Terminal settings 是 JSONC，允许注释和尾逗号。Integration 使用 CST 只编辑根 `keybindings`，并保存：
+
+- 原字节备份。
+- pre/post SHA-256。
+- 目标通道和规范路径。
+- 托管 ID、chord 和语义哈希。
+- committed manifest 中的托管语义与前后哈希。
+
+写入使用同目录临时文件、CAS 和原子替换。
+
+运行期失败会通过内存逆操作栈恢复已完成的写入；每一步回滚前再次做 CAS，因此不会覆盖并发用户修改。当前版本没有跨进程持久化 prepared journal，强杀或断电后的恢复依赖原字节备份和 `doctor` 诊断。
+
+## 8. 安全边界
+
+- Hook 只判断有限快捷键和原生分隔线附近的左键拖动，不记录字符流或鼠标轨迹。
+- 非 Terminal 前台全部透传。
+- 非分隔线区域的鼠标输入全部透传；拖动期间只消费成对的左键 down/move/up。
+- 控制器不注册或替换 Windows Terminal 的 OLE `IDropTarget`。从 Explorer 开始的文件/目录拖放不会被控制器截获，仍由 Windows Terminal 或目标 Shell 按其原生规则处理。
+- injected 输入不能激活 Prefix，自身注入带固定 extra-info 标记以防递归。
+- Action ID 和 fragment 目录均使用产品命名空间。
+- 用户冲突默认阻断，不自动抢占。
+- 控制器运行入口会先检测访问令牌；未提权时通过 UAC 以相同命令自重启，只有提权实例可安装 Hook、UI Automation 与输入桥接。因此管理员启动的 Windows Terminal 可使用全部 Prefix 与鼠标 resize 功能。`SendInput` 仍只向相同或更低完整性目标注入。[SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)
+- `wter run`、`wter launch` 和 `winterminald.exe` 只要进入控制器运行态就必须提权；`config`、`plan`、`install`、`uninstall`、`doctor` 仍是无副作用或用户配置命令，不触发 UAC。
+- 控制器不开放网络端口、不读取终端缓冲区。
+
+## 9. 失败语义
+
+| 失败 | 行为 |
+|---|---|
+| 非 Terminal 前台 | Prefix 透传 |
+| 前台在派发前变化 | 丢弃动作 |
+| Bridge 未安装 | 不吞 Prefix，doctor 报告 |
+| Hook 安装失败 | 控制器退出并记录错误 |
+| 队列满 | 丢弃本次动作，不阻塞 Hook |
+| SendInput 部分成功/失败 | 返回结构化错误并释放本次修饰键 |
+| UI Automation 初始化失败 | 启用鼠标拖动时控制器启动失败并记录明确错误；可在配置中关闭该功能 |
+| 几何快照瞬时读取失败 | 清空本次快照、禁用命中并累计诊断，不猜测旧分隔线 |
+| 拖动期间前台变化 | 终止拖动，不向新窗口派发 resize |
+| JSONC 无法解析 | 不写文件 |
+| 安装时文件并发变化 | CAS 失败并重新规划 |
+| 卸载时用户已修改 | 只保留用户修改并报告 |
+
+## 10. 架构限制
+
+- Windows Terminal 没有公开的远程 Action API或 pane tree 查询 API。
+- UI Automation 只暴露可见 `TermControl` 的屏幕矩形，不暴露真实 pane tree；因此拖动以可见相邻矩形推导分隔线，并使用 Terminal 原生约 5% 父区域步长，而不是像素级重排。
+- SendInput 在重验目标和实际输入之间存在不可完全消除的微小竞争窗口。
+- 控制器只能提供 tmux 风格操作，不提供 tmux 的后台 session server。
+- 当前目录复制能力取决于 Windows Terminal 与 Shell Integration。
+- Windows Terminal 不公开 Action 执行回执或 pane tree 查询；`SendInput` 成功只证明事件已插入，不能单独证明布局已改变。

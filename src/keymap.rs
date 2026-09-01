@@ -1,0 +1,442 @@
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::model::{Direction, TerminalAction};
+
+const ACTION_ID_PREFIX: &str = "User.WinTerminalPP.";
+
+/// A synthetic function-key chord managed by WinTerminal++.
+///
+/// Managed chords deliberately use synthetic high function keys so they do not
+/// overlap with the product's user-facing prefix bindings. F16 and F17 are
+/// excluded because live Stable 1.24 validation did not dispatch them reliably.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeChord {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub function_key: u8,
+}
+
+impl BridgeChord {
+    #[must_use]
+    pub const fn new(ctrl: bool, alt: bool, shift: bool, function_key: u8) -> Self {
+        Self {
+            ctrl,
+            alt,
+            shift,
+            function_key,
+        }
+    }
+
+    #[must_use]
+    pub fn as_windows_terminal_key(self) -> String {
+        let mut parts = Vec::with_capacity(4);
+        if self.ctrl {
+            parts.push("ctrl".to_owned());
+        }
+        if self.alt {
+            parts.push("alt".to_owned());
+        }
+        if self.shift {
+            parts.push("shift".to_owned());
+        }
+        parts.push(format!("f{}", self.function_key));
+        parts.join("+")
+    }
+}
+
+impl fmt::Display for BridgeChord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.as_windows_terminal_key())
+    }
+}
+
+/// One Windows Terminal action and its private synthetic key binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ManagedBinding {
+    pub action: TerminalAction,
+    pub action_id: &'static str,
+    pub bridge_chord: BridgeChord,
+}
+
+impl ManagedBinding {
+    /// Returns the value for an entry's `command` property in Terminal settings.
+    #[must_use]
+    pub fn terminal_command_json(self) -> Value {
+        match self.action {
+            TerminalAction::SendPrefixLiteral => {
+                json!({ "action": "sendInput", "input": "\u{0002}" })
+            }
+            TerminalAction::SplitPane { direction } => json!({
+                "action": "splitPane",
+                "split": direction.as_str(),
+                "splitMode": "duplicate",
+            }),
+            TerminalAction::FocusPane { direction } => json!({
+                "action": "moveFocus",
+                "direction": direction.as_str(),
+            }),
+            TerminalAction::ResizePane { direction } => json!({
+                "action": "resizePane",
+                "direction": direction.as_str(),
+            }),
+            TerminalAction::NewTab => json!({ "action": "newTab" }),
+            TerminalAction::NextTab => json!({ "action": "nextTab" }),
+            TerminalAction::PreviousTab => json!({ "action": "prevTab" }),
+            TerminalAction::ActivateTab { index } => {
+                json!({ "action": "switchToTab", "index": index })
+            }
+            TerminalAction::ClosePane => json!({ "action": "closePane" }),
+            TerminalAction::TogglePaneZoom => json!({ "action": "togglePaneZoom" }),
+            TerminalAction::RenameTab => json!({ "action": "openTabRenamer" }),
+        }
+    }
+
+    /// Returns an entry suitable for Windows Terminal's `actions` array.
+    #[must_use]
+    pub fn action_definition_json(self) -> Value {
+        json!({
+            "id": self.action_id,
+            "command": self.terminal_command_json(),
+        })
+    }
+
+    /// Returns an entry suitable for Windows Terminal's `keybindings` array.
+    #[must_use]
+    pub fn keybinding_definition_json(self) -> Value {
+        json!({
+            "id": self.action_id,
+            "keys": self.bridge_chord.as_windows_terminal_key(),
+        })
+    }
+}
+
+const fn chord(ctrl: bool, alt: bool, shift: bool, function_key: u8) -> BridgeChord {
+    BridgeChord::new(ctrl, alt, shift, function_key)
+}
+
+const MANAGED_BINDINGS: [ManagedBinding; 29] = [
+    ManagedBinding {
+        action: TerminalAction::SplitPane {
+            direction: Direction::Left,
+        },
+        action_id: "User.WinTerminalPP.SplitLeft",
+        bridge_chord: chord(true, true, true, 13),
+    },
+    ManagedBinding {
+        action: TerminalAction::SplitPane {
+            direction: Direction::Right,
+        },
+        action_id: "User.WinTerminalPP.SplitRight",
+        bridge_chord: chord(true, true, true, 14),
+    },
+    ManagedBinding {
+        action: TerminalAction::SplitPane {
+            direction: Direction::Up,
+        },
+        action_id: "User.WinTerminalPP.SplitUp",
+        bridge_chord: chord(true, true, true, 15),
+    },
+    ManagedBinding {
+        action: TerminalAction::SplitPane {
+            direction: Direction::Down,
+        },
+        action_id: "User.WinTerminalPP.SplitDown",
+        bridge_chord: chord(true, true, true, 18),
+    },
+    ManagedBinding {
+        action: TerminalAction::FocusPane {
+            direction: Direction::Left,
+        },
+        action_id: "User.WinTerminalPP.FocusLeft",
+        bridge_chord: chord(true, true, true, 19),
+    },
+    ManagedBinding {
+        action: TerminalAction::FocusPane {
+            direction: Direction::Right,
+        },
+        action_id: "User.WinTerminalPP.FocusRight",
+        bridge_chord: chord(true, true, true, 20),
+    },
+    ManagedBinding {
+        action: TerminalAction::FocusPane {
+            direction: Direction::Up,
+        },
+        action_id: "User.WinTerminalPP.FocusUp",
+        bridge_chord: chord(true, true, true, 21),
+    },
+    ManagedBinding {
+        action: TerminalAction::FocusPane {
+            direction: Direction::Down,
+        },
+        action_id: "User.WinTerminalPP.FocusDown",
+        bridge_chord: chord(true, true, true, 22),
+    },
+    ManagedBinding {
+        action: TerminalAction::ResizePane {
+            direction: Direction::Left,
+        },
+        action_id: "User.WinTerminalPP.ResizeLeft",
+        bridge_chord: chord(true, true, true, 23),
+    },
+    ManagedBinding {
+        action: TerminalAction::ResizePane {
+            direction: Direction::Right,
+        },
+        action_id: "User.WinTerminalPP.ResizeRight",
+        bridge_chord: chord(true, true, true, 24),
+    },
+    ManagedBinding {
+        action: TerminalAction::ResizePane {
+            direction: Direction::Up,
+        },
+        action_id: "User.WinTerminalPP.ResizeUp",
+        bridge_chord: chord(true, false, true, 13),
+    },
+    ManagedBinding {
+        action: TerminalAction::ResizePane {
+            direction: Direction::Down,
+        },
+        action_id: "User.WinTerminalPP.ResizeDown",
+        bridge_chord: chord(true, false, true, 14),
+    },
+    ManagedBinding {
+        action: TerminalAction::SendPrefixLiteral,
+        action_id: "User.WinTerminalPP.SendPrefixLiteral",
+        bridge_chord: chord(true, false, true, 15),
+    },
+    ManagedBinding {
+        action: TerminalAction::NewTab,
+        action_id: "User.WinTerminalPP.NewTab",
+        bridge_chord: chord(true, false, true, 18),
+    },
+    ManagedBinding {
+        action: TerminalAction::NextTab,
+        action_id: "User.WinTerminalPP.NextTab",
+        bridge_chord: chord(true, false, true, 19),
+    },
+    ManagedBinding {
+        action: TerminalAction::PreviousTab,
+        action_id: "User.WinTerminalPP.PreviousTab",
+        bridge_chord: chord(true, false, true, 20),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 0 },
+        action_id: "User.WinTerminalPP.ActivateTab0",
+        bridge_chord: chord(true, false, true, 21),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 1 },
+        action_id: "User.WinTerminalPP.ActivateTab1",
+        bridge_chord: chord(true, false, true, 22),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 2 },
+        action_id: "User.WinTerminalPP.ActivateTab2",
+        bridge_chord: chord(true, false, true, 23),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 3 },
+        action_id: "User.WinTerminalPP.ActivateTab3",
+        bridge_chord: chord(true, false, true, 24),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 4 },
+        action_id: "User.WinTerminalPP.ActivateTab4",
+        bridge_chord: chord(false, true, true, 13),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 5 },
+        action_id: "User.WinTerminalPP.ActivateTab5",
+        bridge_chord: chord(false, true, true, 14),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 6 },
+        action_id: "User.WinTerminalPP.ActivateTab6",
+        bridge_chord: chord(false, true, true, 15),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 7 },
+        action_id: "User.WinTerminalPP.ActivateTab7",
+        bridge_chord: chord(false, true, true, 18),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 8 },
+        action_id: "User.WinTerminalPP.ActivateTab8",
+        bridge_chord: chord(false, true, true, 19),
+    },
+    ManagedBinding {
+        action: TerminalAction::ActivateTab { index: 9 },
+        action_id: "User.WinTerminalPP.ActivateTab9",
+        bridge_chord: chord(false, true, true, 20),
+    },
+    ManagedBinding {
+        action: TerminalAction::ClosePane,
+        action_id: "User.WinTerminalPP.ClosePane",
+        bridge_chord: chord(false, true, true, 21),
+    },
+    ManagedBinding {
+        action: TerminalAction::TogglePaneZoom,
+        action_id: "User.WinTerminalPP.TogglePaneZoom",
+        bridge_chord: chord(false, true, true, 22),
+    },
+    ManagedBinding {
+        action: TerminalAction::RenameTab,
+        action_id: "User.WinTerminalPP.RenameTab",
+        bridge_chord: chord(false, true, true, 23),
+    },
+];
+
+#[must_use]
+pub fn managed_bindings() -> &'static [ManagedBinding] {
+    &MANAGED_BINDINGS
+}
+
+#[must_use]
+pub fn binding_for_action(action: TerminalAction) -> Option<&'static ManagedBinding> {
+    MANAGED_BINDINGS
+        .iter()
+        .find(|binding| binding.action == action)
+}
+
+#[must_use]
+pub fn binding_for_chord(chord: BridgeChord) -> Option<&'static ManagedBinding> {
+    MANAGED_BINDINGS
+        .iter()
+        .find(|binding| binding.bridge_chord == chord)
+}
+
+#[must_use]
+pub fn action_for_chord(chord: BridgeChord) -> Option<TerminalAction> {
+    binding_for_chord(chord).map(|binding| binding.action)
+}
+
+#[must_use]
+pub const fn action_id_prefix() -> &'static str {
+    ACTION_ID_PREFIX
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn managed_table_is_complete_and_unique() {
+        assert_eq!(managed_bindings().len(), 29);
+
+        let actions = managed_bindings()
+            .iter()
+            .map(|binding| binding.action)
+            .collect::<HashSet<_>>();
+        let ids = managed_bindings()
+            .iter()
+            .map(|binding| binding.action_id)
+            .collect::<HashSet<_>>();
+        let chords = managed_bindings()
+            .iter()
+            .map(|binding| binding.bridge_chord)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(actions.len(), 29);
+        assert_eq!(ids.len(), 29);
+        assert_eq!(chords.len(), 29);
+        assert!(
+            managed_bindings()
+                .iter()
+                .all(|binding| binding.action_id.starts_with(action_id_prefix()))
+        );
+    }
+
+    #[test]
+    fn bridge_chords_use_only_the_live_verified_function_key_subset() {
+        let reliable_function_keys = [13, 14, 15, 18, 19, 20, 21, 22, 23, 24];
+        assert!(managed_bindings().iter().all(|binding| {
+            reliable_function_keys.contains(&binding.bridge_chord.function_key)
+        }));
+    }
+
+    #[test]
+    fn bridge_chords_use_only_reserved_modifier_groups() {
+        assert!(managed_bindings().iter().all(|binding| {
+            matches!(
+                (
+                    binding.bridge_chord.ctrl,
+                    binding.bridge_chord.alt,
+                    binding.bridge_chord.shift,
+                ),
+                (true, true, true) | (true, false, true) | (false, true, true)
+            )
+        }));
+    }
+
+    #[test]
+    fn every_binding_round_trips_by_action_and_chord() {
+        for binding in managed_bindings() {
+            assert_eq!(binding_for_action(binding.action), Some(binding));
+            assert_eq!(binding_for_chord(binding.bridge_chord), Some(binding));
+            assert_eq!(action_for_chord(binding.bridge_chord), Some(binding.action));
+        }
+    }
+
+    #[test]
+    fn bridge_chord_uses_windows_terminal_syntax() {
+        assert_eq!(
+            BridgeChord::new(true, true, true, 13).as_windows_terminal_key(),
+            "ctrl+alt+shift+f13"
+        );
+        assert_eq!(
+            BridgeChord::new(false, true, true, 17).to_string(),
+            "alt+shift+f17"
+        );
+    }
+
+    #[test]
+    fn command_json_covers_parameterized_actions() {
+        let split = binding_for_action(TerminalAction::SplitPane {
+            direction: Direction::Right,
+        })
+        .expect("split-right binding");
+        assert_eq!(
+            split.terminal_command_json(),
+            json!({
+                "action": "splitPane",
+                "split": "right",
+                "splitMode": "duplicate",
+            })
+        );
+
+        let tab = binding_for_action(TerminalAction::ActivateTab { index: 9 })
+            .expect("activate-tab-9 binding");
+        assert_eq!(
+            tab.terminal_command_json(),
+            json!({ "action": "switchToTab", "index": 9 })
+        );
+    }
+
+    #[test]
+    fn fragment_entries_reference_the_same_action_id() {
+        let binding =
+            binding_for_action(TerminalAction::SendPrefixLiteral).expect("literal-prefix binding");
+
+        assert_eq!(
+            binding.action_definition_json(),
+            json!({
+                "id": "User.WinTerminalPP.SendPrefixLiteral",
+                "command": { "action": "sendInput", "input": "\u{0002}" },
+            })
+        );
+        assert_eq!(
+            binding.keybinding_definition_json(),
+            json!({
+                "id": "User.WinTerminalPP.SendPrefixLiteral",
+                "keys": "ctrl+shift+f15",
+            })
+        );
+    }
+}
