@@ -1,4 +1,4 @@
-# WinTerminal++ 开发指南
+# WinTerminalP 开发指南
 
 ## 环境
 
@@ -21,46 +21,46 @@ cargo clippy --all-targets --all-features -- -D warnings
 开发期以前台模式运行控制器：
 
 ```powershell
-cargo run --bin wter -- run --no-launch
+cargo run --bin winter -- run --no-launch
 ```
 
 安装计划必须先只读查看：
 
 ```powershell
-cargo run --bin wter -- plan
-cargo run --bin wter -- doctor
+cargo run --bin winter -- plan
+cargo run --bin winter -- doctor
 ```
 
 确认无冲突后安装：
 
 ```powershell
-cargo run --bin wter -- install
+cargo run --bin winter -- install
 ```
 
 Release 隐藏控制器：
 
 ```powershell
 cargo build --release --bins
-target\release\winterminald.exe
+target\release\winterd.exe
 ```
 
-`winterminald.exe` 可直接双击：集成已安装时，它在后台启动控制器并打开原生 Windows Terminal，不创建 WinTerminal++ 界面。`wter.exe` 是推荐的短命令入口，`winterminal.exe` 保留为兼容别名：
+`winterd.exe` 可直接双击：集成已安装时，它在后台启动控制器并打开原生 Windows Terminal，不创建 WinTerminalP 界面。`winter.exe` 是推荐的短命令入口，`winterminalp.exe` 保留为兼容别名：
 
 ```powershell
-target\release\wter.exe
-target\release\wter.exe doctor
-target\release\wter.exe install
-target\release\wter.exe uninstall
+target\release\winter.exe
+target\release\winter.exe doctor
+target\release\winter.exe install
+target\release\winter.exe uninstall
 ```
 
-若通过 `cargo install --path . --bin wter` 安装到已经加入 `PATH` 的 Cargo bin 目录，可在任意目录直接运行 `wter`。
+若通过 `cargo install --path . --bin winter` 安装到已经加入 `PATH` 的 Cargo bin 目录，可在任意目录直接运行 `winter`。
 
 查看或编辑用户快捷键：
 
 ```powershell
-wter config
-wter config --path
-wter config --edit
+winter config
+winter config --path
+winter config --edit
 ```
 
 Shortcut 字段采用 `action_name = "modifier+key"`；缺失项继承默认值。配置解析、重复键与系统保留键校验必须留在 `config`/`prefix`，不能放进 Hook callback。
@@ -99,4 +99,4 @@ Shortcut 字段采用 `action_name = "modifier+key"`；缺失项继承默认值�
 - 不直接格式化或重写真实 `settings.json`。
 - 真实安装前记录目标绝对路径、原始哈希和备份路径。
 - 不修改 `defaults.json` 或 `state.json`。
-- 测试卸载时仅操作 `User.WinTerminalPP.*` 命名空间。
+- 测试卸载时仅操作 `User.WinTerminalP.*` 命名空间。

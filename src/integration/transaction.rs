@@ -102,7 +102,7 @@ pub(crate) fn atomic_replace(
     })?;
     fs::create_dir_all(parent)
         .map_err(|error| AppError::io("create integration target directory", parent, error))?;
-    let temp_path = unique_path(parent, ".winterminalpp-tmp", "json");
+    let temp_path = unique_path(parent, ".winterminalp-tmp", "json");
     write_new_synced(&temp_path, replacement, "write integration temporary file")?;
 
     // A second check closes the potentially long window spent serializing and syncing the temp file.

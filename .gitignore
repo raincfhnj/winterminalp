@@ -1,9 +1,6 @@
 # Build output
 /target/
 
-# WinTerminal++ local controller state
-.winterminal-local/
-
 # Logs
 *.log
 

@@ -1,4 +1,4 @@
-//! Shared command-line implementation for `wter.exe` and `winterminal.exe`.
+//! Shared command-line implementation for `winter.exe` and `winterminalp.exe`.
 
 use std::env;
 use std::path::PathBuf;
@@ -39,7 +39,7 @@ enum CliCommand {
     Plan,
     /// Install the managed action fragment and hidden bridge keybindings.
     Install,
-    /// Remove only integration entries still owned by WinTerminal++.
+    /// Remove only integration entries still owned by WinTerminalP.
     Uninstall,
     /// Diagnose the current Windows Terminal integration.
     Doctor,
@@ -128,7 +128,7 @@ fn run_command(integration: &IntegrationConfig, no_launch: bool) -> AppResult<Ex
     let bridge_ready = bridge_is_ready(&report);
     if !bridge_ready {
         return Err(AppError::InvalidConfiguration(
-            "Windows Terminal action bridge is not ready; run `wter doctor` and `wter install` first"
+            "Windows Terminal action bridge is not ready; run `winter doctor` and `winter install` first"
                 .to_owned(),
         ));
     }
@@ -177,20 +177,20 @@ fn launch(integration: &IntegrationConfig) -> AppResult<ExitCode> {
     let report = doctor(integration)?;
     if !bridge_is_ready(&report) {
         return Err(AppError::InvalidConfiguration(
-            "Windows Terminal integration is not ready; run `wter doctor` and `wter install` first"
+            "Windows Terminal integration is not ready; run `winter doctor` and `winter install` first"
                 .to_owned(),
         ));
     }
 
     spawn_background_controller()?;
-    println!("WinTerminal++ elevated controller is starting; Windows Terminal will open elevated.");
+    println!("WinTerminalP elevated controller is starting; Windows Terminal will open elevated.");
     Ok(ExitCode::SUCCESS)
 }
 
 fn spawn_background_controller() -> AppResult<()> {
     let current_exe = env::current_exe()
         .map_err(|error| AppError::io("resolve current executable", PathBuf::from("."), error))?;
-    let sibling_daemon = current_exe.with_file_name("winterminald.exe");
+    let sibling_daemon = current_exe.with_file_name("winterd.exe");
     let (program, arguments) = if sibling_daemon.is_file() {
         (sibling_daemon, vec!["--launch"])
     } else {

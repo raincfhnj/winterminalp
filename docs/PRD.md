@@ -1,4 +1,4 @@
-# WinTerminal++ 产品需求文档
+# WinTerminalP 产品需求文档
 
 | 项目 | 内容 |
 |---|---|
@@ -11,9 +11,9 @@
 
 ## 1. 产品摘要
 
-WinTerminal++ 不再实现新的终端窗口、终端渲染器或桌面界面。产品直接复用用户已经安装的 Windows Terminal，只提供一个常驻、无界面的 Rust 控制器，将 tmux 风格的 `Ctrl+B` 两段式快捷键转换为 Windows Terminal 原生 Action。
+WinTerminalP 不再实现新的终端窗口、终端渲染器或桌面界面。产品直接复用用户已经安装的 Windows Terminal，只提供一个常驻、无界面的 Rust 控制器，将 tmux 风格的 `Ctrl+B` 两段式快捷键转换为 Windows Terminal 原生 Action。
 
-Windows Terminal 继续负责标签页、窗格、Shell、字体、主题、复制粘贴、IME 和终端渲染。WinTerminal++ 只负责：
+Windows Terminal 继续负责标签页、窗格、Shell、字体、主题、复制粘贴、IME 和终端渲染。WinTerminalP 只负责：
 
 - 判断当前前台是否为 Windows Terminal。
 - 识别 `Ctrl+B` Prefix 及第二个按键。
@@ -44,7 +44,7 @@ v0.2 的核心原则是：
 - 支持在 TOML 中自定义 Prefix、超时时间和全部动作键位，无需重新编译或重装 Action Bridge。
 - 对其他应用、普通键盘输入和第三方注入事件保持透明。
 - 安装前检测按键冲突，修改 Windows Terminal 配置前创建原字节备份。
-- 卸载时只移除仍属于 WinTerminal++ 的配置，不覆盖用户后续修改。
+- 卸载时只移除仍属于 WinTerminalP 的配置，不覆盖用户后续修改。
 - 所有核心状态机和配置变更具备自动化测试。
 
 ### 3.2 P1 目标
@@ -70,7 +70,7 @@ v0.2 的核心原则是：
 
 典型流程：
 
-1. 用户运行 `wter`，或直接双击 `winterminald.exe`。
+1. 用户运行 `winter`，或直接双击 `winterd.exe`。
 2. 控制器复用或打开 Windows Terminal。
 3. 用户按 `Ctrl+B`，再按 `Shift+Right`，当前窗格向右分割。
 4. 用户按 `Ctrl+B`，再按方向键，在窗格间移动焦点。
@@ -118,7 +118,7 @@ v0.2 的核心原则是：
 | 关闭窗格 | `closePane` | 沿用 Windows Terminal 对最后窗格/标签页的行为 |
 | 临时放大 | `togglePaneZoom` | 再次执行恢复 |
 
-当前目录继承依赖 Shell Integration 向 Windows Terminal 报告 CWD。`wter install` 会在 PowerShell Profile 中安装受管的 `OSC 9;9` 提示符包装（带备份、幂等、可卸载），使 `splitPane`（`splitMode: duplicate`）与 `duplicateTab` 继承活动窗格目录；无法获取时遵循 Windows Terminal 自身行为。
+当前目录继承依赖 Shell Integration 向 Windows Terminal 报告 CWD。`winter install` 会在 PowerShell Profile 中安装受管的 `OSC 9;9` 提示符包装（带备份、幂等、可卸载），使 `splitPane`（`splitMode: duplicate`）与 `duplicateTab` 继承活动窗格目录；无法获取时遵循 Windows Terminal 自身行为。
 
 ### FR-005 标签页操作
 
@@ -129,7 +129,7 @@ v0.2 的核心原则是：
 
 ### FR-006 Action Bridge
 
-- Action 使用 `User.WinTerminalPP.*` 命名空间。
+- Action 使用 `User.WinTerminalP.*` 命名空间。
 - Action fragment 安装在当前用户 Windows Terminal fragment 目录。
 - fragment 只包含 Action，不包含按键。
 - 每个 Terminal 通道的 `settings.json` 只加入产品自有隐藏桥接键。
@@ -152,7 +152,7 @@ v0.2 的核心原则是：
 
 - 同一 Windows 用户会话只运行一个控制器实例。
 - Release 版控制器不显示额外控制台窗口。
-- 控制器运行态必须与管理员 Windows Terminal 处于相同完整性级别：未提权的 `wter run`、`wter launch` 和 `winterminald.exe` 通过 UAC 自重启，核心拒绝低完整性运行。
+- 控制器运行态必须与管理员 Windows Terminal 处于相同完整性级别：未提权的 `winter run`、`winter launch` 和 `winterd.exe` 通过 UAC 自重启，核心拒绝低完整性运行。
 - `Ctrl+B`、`Q` 可退出控制器，但不关闭 Windows Terminal。
 - Hook 必须有消息循环，并通过 RAII 保证退出时卸载。
 - 键盘与可选鼠标 Hook 必须共享同一生命周期；非 Terminal、非分隔线以及 injected 鼠标事件全部透传。
@@ -162,9 +162,9 @@ v0.2 的核心原则是：
 
 ### FR-009 配置和诊断
 
-- 配置默认位于 `%LOCALAPPDATA%\WinTerminalPP\config.toml`。
+- 配置默认位于 `%LOCALAPPDATA%\WinTerminalP\config.toml`。
 - 配置带 `schema_version`，当前版本为 2；兼容旧 schema 1，其他版本、未知字段和越界值必须报错。
-- `wter config` 输出文件路径和完整有效配置，`wter config --edit` 使用记事本打开配置。
+- `winter config` 输出文件路径和完整有效配置，`winter config --edit` 使用记事本打开配置。
 - Shortcut 使用规范化 chord 字符串；未知动作、重复 chord、系统保留键、无修饰普通 Prefix 和禁用退出键必须拒绝启动。
 - 未写出的动作继承默认值，值为 `disabled` 的可选动作不注册；保存后重启控制器生效。
 - `[mouse_resize]` 可关闭鼠标功能，并校验分隔线命中扩展与几何刷新周期的安全范围。

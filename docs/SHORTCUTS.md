@@ -1,4 +1,4 @@
-# WinTerminal++ 快捷键
+# WinTerminalP 快捷键
 
 所有快捷键仅在 Windows Terminal 位于前台时生效。先按下并释放 `Ctrl+B`，再按第二个键。
 
@@ -15,7 +15,7 @@
 | `Z` | 放大或恢复活动窗格 |
 | `,` | 打开标签页重命名框 |
 | `B` | 向 Shell 发送原始 Prefix（默认 Ctrl+B；自定义 Prefix 时发送对应组合） |
-| `Q` | 退出 WinTerminal++ 控制器，不关闭 Terminal |
+| `Q` | 退出 WinTerminalP 控制器，不关闭 Terminal |
 | `Escape` | 取消 Prefix |
 
 ## 鼠标调整窗格
@@ -38,16 +38,16 @@ geometry_poll_interval_ms = 100
 查看当前生效配置和文件位置：
 
 ```powershell
-wter config
+winter config
 ```
 
 直接用记事本打开：
 
 ```powershell
-wter config --edit
+winter config --edit
 ```
 
-配置文件位于 `%LOCALAPPDATA%\WinTerminalPP\config.toml`。例如改成更接近 Vim/tmux 的 `H/J/K/L`：
+配置文件位于 `%LOCALAPPDATA%\WinTerminalP\config.toml`。例如改成更接近 Vim/tmux 的 `H/J/K/L`：
 
 ```toml
 prefix = "ctrl+a"
@@ -73,7 +73,7 @@ shutdown = "q"
 只需要写想覆盖的动作；没有写出的动作继续使用默认值。保存后退出并重新运行控制器；首次运行态会出现一次 UAC 确认：
 
 ```powershell
-wter
+winter
 ```
 
 键名不区分大小写，支持：
@@ -89,7 +89,7 @@ wter
 - `Escape`、`Alt+Tab`、`Alt+F4`、`Ctrl+Escape` 和 Windows 键组合不能绑定。
 - 两个动作不能使用同一 chord；启动时会报告冲突动作名。
 - 可把非必要动作设为 `"disabled"`；`shutdown` 必须保留一个键位。
-- 用户快捷键只改变 Rust Prefix 映射，不修改隐藏 Action Bridge，因此无需重新执行 `wter install`。
+- 用户快捷键只改变 Rust Prefix 映射，不修改隐藏 Action Bridge，因此无需重新执行 `winter install`。
 
 ## 行为说明
 
@@ -98,8 +98,8 @@ wter
 - Prefix 后仍按住 Ctrl 再按方向键，执行 resize；若要移动焦点，请先释放 Ctrl。
 - `send_prefix_literal`（默认第二键 `B`）由控制器直接注入当前配置的 Prefix 组合，自定义 Prefix 后仍然有效，无需重新安装桥接。
 - `closePane` 沿用 Windows Terminal 原生语义：没有分屏时会关闭标签页，最后一个标签页时会关闭窗口。
-- 分屏与新建标签页的当前目录继承由 Windows Terminal 的 Shell Integration 提供。`wter install` 会向 `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`（以及存在时的 `Documents\PowerShell\...`）追加一段受管提示符包装，使提示符输出 `OSC 9;9` 工作目录；`wter uninstall` 只移除未被修改的受管块。修改后需重新打开 PowerShell 标签页（或在会话中重新加载 Profile）才能生效。
-- `wter run`、`wter launch` 和 `winterminald.exe` 会在未提权时通过 UAC 自重启；控制器核心拒绝以普通权限安装 Hook 或向 Terminal 派发动作。
+- 分屏与新建标签页的当前目录继承由 Windows Terminal 的 Shell Integration 提供。`winter install` 会向 `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`（以及存在时的 `Documents\PowerShell\...`）追加一段受管提示符包装，使提示符输出 `OSC 9;9` 工作目录；`winter uninstall` 只移除未被修改的受管块。修改后需重新打开 PowerShell 标签页（或在会话中重新加载 Profile）才能生效。
+- `winter run`、`winter launch` 和 `winterd.exe` 会在未提权时通过 UAC 自重启；控制器核心拒绝以普通权限安装 Hook 或向 Terminal 派发动作。
 - 鼠标左键在分隔线以外完全透传；点击或开始拖动会取消尚未完成的 Prefix，避免下一键误触发动作。
 
 桥接只使用 F13、F14、F15、F18–F24 的隐藏组合键；F16/F17 已因本机 Stable 1.24 实测不可靠而禁用。用户不需要直接按这些桥接键，也不应把它们绑定给其他动作。

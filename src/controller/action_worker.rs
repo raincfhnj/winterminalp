@@ -50,7 +50,7 @@ impl ActionWorker {
     pub(super) fn start(capacity: usize) -> AppResult<Self> {
         let (sender, receiver) = mpsc::sync_channel(capacity);
         let join = thread::Builder::new()
-            .name("winterminal-action-worker".to_owned())
+            .name("winterminalp-action-worker".to_owned())
             .spawn(move || Ok(run(receiver)))
             .map_err(|error| {
                 AppError::Native(format!("failed to spawn action worker thread: {error}"))

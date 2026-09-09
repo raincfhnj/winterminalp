@@ -1,7 +1,7 @@
 //! Managed PowerShell shell integration.
 //!
 //! Windows Terminal only inherits the working directory of a duplicated pane
-//! when the shell reports it through the `OSC 9;9` sequence. WinTerminal++
+//! when the shell reports it through the `OSC 9;9` sequence. WinTerminalP
 //! therefore appends a small, reversible prompt wrapper to the PowerShell
 //! profiles so that `splitPane` with `splitMode: duplicate` starts in the same
 //! directory as the focused pane.
@@ -13,26 +13,26 @@ use crate::{AppError, AppResult};
 use super::transaction::{atomic_replace, create_backup, read_optional_snapshot};
 use super::types::{ChangeStatus, IntegrationConfig, ShellIntegrationReport, ShellKind};
 
-const BEGIN_MARKER: &str = "# >>> WinTerminalPP shell integration >>>";
-const END_MARKER: &str = "# <<< WinTerminalPP shell integration <<<";
+const BEGIN_MARKER: &str = "# >>> WinTerminalP shell integration >>>";
+const END_MARKER: &str = "# <<< WinTerminalP shell integration <<<";
 
-const SNIPPET_BODY: &str = r#"# Managed by WinTerminal++. Run `wter uninstall` to remove this block.
-if (-not $Global:__WinTerminalPPPromptWrapped) {
-    $Global:__WinTerminalPPPromptWrapped = $true
-    $Global:__WinTerminalPPOriginalPrompt = $function:prompt
+const SNIPPET_BODY: &str = r#"# Managed by WinTerminalP. Run `winter uninstall` to remove this block.
+if (-not $Global:__WinTerminalP_PromptWrapped) {
+    $Global:__WinTerminalP_PromptWrapped = $true
+    $Global:__WinTerminalP_OriginalPrompt = $function:prompt
     function global:prompt {
-        $__wtppLocation = $ExecutionContext.SessionState.Path.CurrentLocation
-        $__wtppOsc = "$([char]27)]9;9;`"$__wtppLocation`"$([char]7)"
-        $__wtppBase = if ($Global:__WinTerminalPPOriginalPrompt) {
-            & $Global:__WinTerminalPPOriginalPrompt
+        $__wtpLocation = $ExecutionContext.SessionState.Path.CurrentLocation
+        $__wtpOsc = "$([char]27)]9;9;`"$__wtpLocation`"$([char]7)"
+        $__wtpBase = if ($Global:__WinTerminalP_OriginalPrompt) {
+            & $Global:__WinTerminalP_OriginalPrompt
         }
         else {
-            "PS $__wtppLocation> "
+            "PS $__wtpLocation> "
         }
-        if ($__wtppBase -is [System.Array]) {
-            return @($__wtppOsc) + @($__wtppBase)
+        if ($__wtpBase -is [System.Array]) {
+            return @($__wtpOsc) + @($__wtpBase)
         }
-        return $__wtppOsc + [string]$__wtppBase
+        return $__wtpOsc + [string]$__wtpBase
     }
 }"#;
 
@@ -114,7 +114,7 @@ fn plan_profile_inner(shell: ShellKind, path: &Path) -> AppResult<ShellIntegrati
             path,
             ChangeStatus::Conflict,
             None,
-            Some("profile contains an incomplete WinTerminalPP marker block".to_owned()),
+            Some("profile contains an incomplete WinTerminalP marker block".to_owned()),
         ),
     })
 }
@@ -160,7 +160,7 @@ fn install_profile_inner(
             path,
             ChangeStatus::Conflict,
             None,
-            Some("profile contains an incomplete WinTerminalPP marker block".to_owned()),
+            Some("profile contains an incomplete WinTerminalP marker block".to_owned()),
         )),
         BlockState::Present { start, end } => {
             if normalized(&text[start..end]) == normalized(&desired) {
@@ -240,7 +240,7 @@ fn uninstall_profile_inner(
             path,
             ChangeStatus::Conflict,
             None,
-            Some("profile contains an incomplete WinTerminalPP marker block".to_owned()),
+            Some("profile contains an incomplete WinTerminalP marker block".to_owned()),
         )),
         BlockState::Present { start, end } => {
             let desired = managed_block(detect_newline(&text));
@@ -478,7 +478,7 @@ mod tests {
         install(&config);
         let edited = fs::read_to_string(&profile)
             .expect("profile should be readable")
-            .replace("PS $__wtppLocation> ", "PS> ");
+            .replace("PS $__wtpLocation> ", "PS> ");
         fs::write(&profile, edited).expect("edited profile should be written");
 
         let report = uninstall(&config);

@@ -1,8 +1,8 @@
-# WinTerminal++ v0.2 实施计划
+# WinTerminalP v0.2 实施计划
 
 ## 1. 项目概览
 
-- 名称：WinTerminal++。
+- 名称：WinTerminalP。
 - 模式：从 Tauri/xterm 自绘终端重构为 Windows Terminal 原生增强器。
 - 语言：Rust 2024 Edition。
 - 平台：Windows 10/11 x64。
@@ -31,13 +31,13 @@
 
 采用小型模块化单体、双二进制：
 
-    wter.exe（winterminal.exe 兼容别名）
+    winter.exe（winterminalp.exe 兼容别名）
       ├── install / uninstall
       ├── doctor
       ├── run（前台调试）
       └── launch
 
-    winterminald.exe
+    winterd.exe
       ├── single-instance guard
       ├── WH_KEYBOARD_LL hook thread
       ├── Prefix reducer
@@ -106,7 +106,7 @@ struct WindowIdentity {
 ### 5.3 Bridge 不变量
 
 - 每个 `TerminalAction` 恰好对应一个 Action ID 和一个隐藏 chord。
-- Action ID 位于 `User.WinTerminalPP.*`。
+- Action ID 位于 `User.WinTerminalP.*`。
 - fragment 不包含 keys。
 - 用户 keybindings 不重复占用 chord。
 - Action 发送成功只表示输入已插入，不宣称布局结果已被读取确认。
@@ -116,13 +116,13 @@ struct WindowIdentity {
 
 | 命令 | 作用 | 是否修改系统 |
 |---|---|---|
-| `wter` / `wter launch` | 启动隐藏控制器和 Windows Terminal | 启动进程 |
-| `wter config` | 输出完整有效 Shortcut 配置；可 `--path` 或 `--edit` | 只在首次运行时创建应用配置 |
-| `wter plan` | 输出安装计划和冲突 | 否 |
-| `wter install` | 安装 fragment 和当前通道 keybindings | 是，可恢复 |
-| `wter uninstall` | 删除仍受管理的配置 | 是，可恢复 |
-| `wter doctor` | 输出环境、安装和权限诊断 | 否 |
-| `wter run` | 前台运行控制器，便于开发 | 仅进程内 |
+| `winter` / `winter launch` | 启动隐藏控制器和 Windows Terminal | 启动进程 |
+| `winter config` | 输出完整有效 Shortcut 配置；可 `--path` 或 `--edit` | 只在首次运行时创建应用配置 |
+| `winter plan` | 输出安装计划和冲突 | 否 |
+| `winter install` | 安装 fragment 和当前通道 keybindings | 是，可恢复 |
+| `winter uninstall` | 删除仍受管理的配置 | 是，可恢复 |
+| `winter doctor` | 输出环境、安装和权限诊断 | 否 |
+| `winter run` | 前台运行控制器，便于开发 | 仅进程内 |
 
 自动发现所有已初始化的 Stable、Preview、Canary 和 Unpackaged 通道；不存在 `settings.json` 的通道被跳过，不创建伪配置。Portable 通道的 `settings.json` 与可执行文件同目录，无法从 `LOCALAPPDATA` 定位，因此不参与自动安装。
 

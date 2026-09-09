@@ -46,7 +46,7 @@ impl DesktopCache {
         let worker_error_count = Arc::clone(&pane_geometry_errors);
         let worker_last_error = Arc::clone(&last_pane_geometry_error);
         let join = thread::Builder::new()
-            .name("winterminal-desktop-observer".to_owned())
+            .name("winterminalp-desktop-observer".to_owned())
             .spawn(move || {
                 run_observer(
                     worker_value,

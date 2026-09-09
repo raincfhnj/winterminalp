@@ -39,7 +39,7 @@ NextTab:     BeforeTitle=管理员: WINTERMINAL_E2E_A, AfterTitle=管理员: WIN
 
 ### 2.1 方案描述
 
-先通过 `wter uninstall` 删除旧托管项并恢复 Stable `settings.json` 的原始 SHA-256，再调整桥接表并重新安装。
+先通过 `winter uninstall` 删除旧托管项并恢复 Stable `settings.json` 的原始 SHA-256，再调整桥接表并重新安装。
 
 ### 2.2 止血效果
 

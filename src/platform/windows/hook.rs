@@ -91,7 +91,7 @@ impl InputHook {
     pub fn start(handler: RawInputHandler, include_mouse: bool) -> PlatformResult<Self> {
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join = thread::Builder::new()
-            .name("winterminal-input-hook".to_owned())
+            .name("winterminalp-input-hook".to_owned())
             .spawn(move || hook_thread_main(handler, include_mouse, ready_tx))
             .map_err(|source| PlatformError::HookThreadSpawn { source })?;
 

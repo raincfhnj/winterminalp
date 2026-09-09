@@ -106,7 +106,7 @@ mod implementation {
         }
         if !options.bridge_ready {
             return Err(AppError::InvalidConfiguration(
-                "Windows Terminal action bridge is not ready; run `wter doctor` and `wter install` first"
+                "Windows Terminal action bridge is not ready; run `winter doctor` and `winter install` first"
                     .to_owned(),
             ));
         }

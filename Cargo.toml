@@ -1,32 +1,32 @@
 [package]
-name = "winterminal-plus-plus"
+name = "winterminalp"
 version = "0.2.0"
 description = "A tmux-style input controller for native Windows Terminal panes"
 authors = ["raincfhnj"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/raincfhnj/winterminal-plus-plus"
-homepage = "https://github.com/raincfhnj/winterminal-plus-plus"
+repository = "https://github.com/raincfhnj/winterminalp"
+homepage = "https://github.com/raincfhnj/winterminalp"
 readme = "README.md"
 keywords = ["windows-terminal", "tmux", "keyboard", "shortcuts", "windows"]
 categories = ["command-line-utilities", "os::windows-apis"]
 edition = "2024"
 rust-version = "1.85"
-default-run = "wter"
+default-run = "winter"
 
 [lib]
-name = "winterminal"
+name = "winterminalp"
 
 [[bin]]
-name = "winterminal"
-path = "src/bin/winterminal.rs"
+name = "winterminalp"
+path = "src/bin/winterminalp.rs"
 
 [[bin]]
-name = "wter"
-path = "src/bin/wter.rs"
+name = "winter"
+path = "src/bin/winter.rs"
 
 [[bin]]
-name = "winterminald"
-path = "src/bin/winterminald.rs"
+name = "winterd"
+path = "src/bin/winterd.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

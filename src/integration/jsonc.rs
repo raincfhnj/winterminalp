@@ -372,7 +372,7 @@ fn parse_existing_bindings(
 ///
 /// Returns the optional managed `id`, every chord declared by `keys` (a string
 /// or an array of strings), and whether the entry is a bare `{id, keys}` object
-/// with a single string chord that WinTerminal++ is allowed to own or remove.
+/// with a single string chord that WinTerminalP is allowed to own or remove.
 fn parse_binding_definition(value: &Value) -> Result<(Option<String>, Vec<String>, bool), String> {
     let object = value
         .as_object()
@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn merge_is_lossless_around_the_edited_array_and_idempotent() {
         let source = b"\xef\xbb\xbf{\r\n  // keep this comment\r\n  \"profiles\": [],\r\n}\r\n";
-        let bindings = [desired("WinTerminalPP.SplitLeft", "ctrl+f13")];
+        let bindings = [desired("WinTerminalP.SplitLeft", "ctrl+f13")];
 
         let first = merge_keybindings(source, &bindings).expect("merge should succeed");
         assert!(first.conflicts.is_empty());
@@ -539,8 +539,8 @@ mod tests {
 
     #[test]
     fn blocks_same_id_with_a_different_chord() {
-        let source = br#"{"keybindings":[{"id":"WinTerminalPP.SplitLeft","keys":"ctrl+f14"}]}"#;
-        let result = merge_keybindings(source, &[desired("WinTerminalPP.SplitLeft", "ctrl+f13")])
+        let source = br#"{"keybindings":[{"id":"WinTerminalP.SplitLeft","keys":"ctrl+f14"}]}"#;
+        let result = merge_keybindings(source, &[desired("WinTerminalP.SplitLeft", "ctrl+f13")])
             .expect("analysis should complete");
 
         assert!(result.replacement.is_none());
@@ -557,7 +557,7 @@ mod tests {
         let source = br#"{"keybindings":[{"id":"User.Action","keys":"SHIFT + CTRL + F13"}]}"#;
         let result = merge_keybindings(
             source,
-            &[desired("WinTerminalPP.SplitLeft", "ctrl+shift+f13")],
+            &[desired("WinTerminalP.SplitLeft", "ctrl+shift+f13")],
         )
         .expect("analysis should complete");
 
@@ -574,14 +574,14 @@ mod tests {
     fn uninstall_removes_only_semantically_unchanged_manifest_entries() {
         let source = br#"{
   "keybindings": [
-    { "id": "WinTerminalPP.SplitLeft", "keys": "ctrl+f13" },
-    { "id": "WinTerminalPP.SplitRight", "keys": "ctrl+f24", "userNote": true },
+    { "id": "WinTerminalP.SplitLeft", "keys": "ctrl+f13" },
+    { "id": "WinTerminalP.SplitRight", "keys": "ctrl+f24", "userNote": true },
     { "id": "User.Action", "keys": "ctrl+x" }
   ]
 }"#;
         let records = [
-            to_manifest_binding(&desired("WinTerminalPP.SplitLeft", "ctrl+f13")),
-            to_manifest_binding(&desired("WinTerminalPP.SplitRight", "ctrl+f14")),
+            to_manifest_binding(&desired("WinTerminalP.SplitLeft", "ctrl+f13")),
+            to_manifest_binding(&desired("WinTerminalP.SplitRight", "ctrl+f14")),
         ];
 
         let edit = remove_managed_keybindings(source, &records).expect("removal should succeed");
@@ -600,7 +600,7 @@ mod tests {
         let source = br#"{"keybindings":[{"command":"newTab","keys":"ctrl+shift+t"}]}"#;
         let result = merge_keybindings(
             source,
-            &[desired("WinTerminalPP.SplitLeft", "ctrl+alt+shift+f13")],
+            &[desired("WinTerminalP.SplitLeft", "ctrl+alt+shift+f13")],
         )
         .expect("analysis should complete");
 
@@ -614,7 +614,7 @@ mod tests {
             br#"{"keybindings":[{"id":"User.Multi","keys":["ctrl+alt+shift+f13","ctrl+x"]}]}"#;
         let result = merge_keybindings(
             source,
-            &[desired("WinTerminalPP.SplitLeft", "ctrl+alt+shift+f13")],
+            &[desired("WinTerminalP.SplitLeft", "ctrl+alt+shift+f13")],
         )
         .expect("analysis should complete");
 

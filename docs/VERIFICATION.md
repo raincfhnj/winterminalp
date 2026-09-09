@@ -1,4 +1,4 @@
-# WinTerminal++ v0.2 验证记录
+# WinTerminalP v0.2 验证记录
 
 本文件记录一次真实环境验证的方法与结果。路径、哈希、PID 等与本机相关的值已被泛化；如需复现，请以自己机器上的实际输出为准。
 
@@ -9,7 +9,7 @@
 | Windows Terminal | Stable 1.24.11911.0 |
 | 集成状态 | 已安装，`doctor.healthy = true` |
 | 托管绑定 | 29，冲突 0 |
-| 短命令 | `%CARGO_HOME%\bin\wter.exe`，已在 PATH |
+| 短命令 | `%CARGO_HOME%\bin\winter.exe`，已在 PATH |
 | 用户现有 Terminal | 保留；几何/步长探针均使用独立命名窗口并按精确 HWND 清理 |
 
 ## 1. 自动化质量门
@@ -33,9 +33,9 @@ cargo build --release --bins
 
 | 文件 | 说明 |
 |---|---|
-| `target/release/wter.exe` | 推荐的 `plan`/`install`/`uninstall`/`doctor`/`run`/`launch` 短命令入口 |
-| `target/release/winterminal.exe` | 兼容别名，与 `wter.exe` 共用 CLI 实现 |
-| `target/release/winterminald.exe` | Windows subsystem 隐藏控制器，可直接双击后台运行并打开原生 Windows Terminal |
+| `target/release/winter.exe` | 推荐的 `plan`/`install`/`uninstall`/`doctor`/`run`/`launch` 短命令入口 |
+| `target/release/winterminalp.exe` | 兼容别名，与 `winter.exe` 共用 CLI 实现 |
+| `target/release/winterd.exe` | Windows subsystem 隐藏控制器，可直接双击后台运行并打开原生 Windows Terminal |
 
 ## 3. 真实配置事务
 
@@ -45,9 +45,9 @@ cargo build --release --bins
 |---|---|
 | 安装前原始 settings | 记录原始字节 SHA-256 |
 | 当前已安装 settings | 记录安装后 SHA-256 |
-| 原字节备份 | `%LOCALAPPDATA%\WinTerminalPP\integration\backups\*.json` |
+| 原字节备份 | `%LOCALAPPDATA%\WinTerminalP\integration\backups\*.json` |
 | Action fragment | 记录 fragment SHA-256 |
-| Manifest | `%LOCALAPPDATA%\WinTerminalPP\integration\manifest.json` |
+| Manifest | `%LOCALAPPDATA%\WinTerminalP\integration\manifest.json` |
 
 已经完成一次“安装 → 真实动作验证 → 卸载 → 原始哈希恢复 → 重新安装”。卸载后 settings 与安装前 SHA-256 完全一致。
 
@@ -84,12 +84,12 @@ Windows Terminal 没有公开 pane tree 或 Action 执行回执 API，所以“�
 
 - 正常运行期任一步安装失败都会按逆操作栈回滚已经完成的目标；每次恢复前执行 CAS，不覆盖并发用户修改。
 - 强杀或断电若恰好发生在多文件写入和 committed manifest 落盘之间，当前版本没有持久化 prepared journal。此时应先保留当前文件，再用原字节备份和 `doctor` 诊断恢复。
-- 可随时执行 `wter uninstall`；它只删除语义仍与 manifest 一致的托管项，用户后来修改的项会保留并报告。
+- 可随时执行 `winter uninstall`；它只删除语义仍与 manifest 一致的托管项，用户后来修改的项会保留并报告。
 
 ## 7. 自定义 Shortcut 验证
 
 - 现有三字段 schema 1 配置可加载，缺少的新字段自动获得默认 Prefix、动作和鼠标配置；加载后只在内存中迁移为 schema 2，原文件不被改写。
-- `wter config` 能输出完整有效 TOML；`wter config --path` 返回 `%LOCALAPPDATA%\WinTerminalPP\config.toml`。
+- `winter config` 能输出完整有效 TOML；`winter config --path` 返回 `%LOCALAPPDATA%\WinTerminalP\config.toml`。
 - 自定义 `alt+a` Prefix、`new_tab = "t"` 和 `disabled` 可选动作已通过状态机/配置契约测试。
 - 未知动作、重复 chord、普通无修饰 Prefix、系统保留组合和禁用 `shutdown` 均会拒绝启动。
 

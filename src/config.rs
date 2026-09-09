@@ -288,7 +288,7 @@ pub fn default_app_data_dir() -> AppResult<PathBuf> {
     let local_app_data = env::var_os("LOCALAPPDATA").ok_or_else(|| {
         AppError::InvalidConfiguration("LOCALAPPDATA is not available".to_owned())
     })?;
-    Ok(PathBuf::from(local_app_data).join("WinTerminalPP"))
+    Ok(PathBuf::from(local_app_data).join("WinTerminalP"))
 }
 
 pub fn default_config_path() -> AppResult<PathBuf> {

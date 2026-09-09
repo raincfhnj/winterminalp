@@ -7,13 +7,13 @@ use std::env;
 use std::thread;
 use std::time::Duration;
 
-use winterminal::keymap::binding_for_action;
-use winterminal::pane_layout::PaneLayout;
-use winterminal::platform::windows::{
+use winterminalp::keymap::binding_for_action;
+use winterminalp::pane_layout::PaneLayout;
+use winterminalp::platform::windows::{
     HookDecision, InputHook, TerminalAccessibility, foreground_terminal_window, send_bridge_chord,
     terminal_window_identity,
 };
-use winterminal::{Direction, TerminalAction};
+use winterminalp::{Direction, TerminalAction};
 
 #[test]
 #[ignore = "inspects current desktop global-hotkey reservations"]
@@ -22,7 +22,7 @@ fn managed_bridge_chords_are_available_as_global_hotkeys() {
         HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, RegisterHotKey,
         UnregisterHotKey, VK_F1,
     };
-    use winterminal::keymap::managed_bindings;
+    use winterminalp::keymap::managed_bindings;
 
     for (offset, binding) in managed_bindings().iter().enumerate() {
         let id = 0x5000 + i32::try_from(offset).expect("managed binding count fits in i32");

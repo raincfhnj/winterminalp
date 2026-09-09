@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-09-09
 
-Initial public release. WinTerminal++ was rewritten from an abandoned Tauri/xterm
+Initial public release. WinTerminalP was rewritten from an abandoned Tauri/xterm
 terminal into a headless controller that enhances the native Windows Terminal.
 
 ### Added
@@ -29,7 +29,7 @@ terminal into a headless controller that enhances the native Windows Terminal.
   working directory, with encoding preservation and idempotent, reversible install.
 - Per-monitor DPI awareness so hook coordinates and UI Automation rectangles share a
   coordinate system.
-- `wter`, `winterminal`, and hidden `winterminald` binaries sharing one CLI.
+- `winter`, `winterminalp`, and hidden `winterd` binaries sharing one CLI.
 - `plan`, `install`, `uninstall`, `doctor`, `config`, `run`, and `launch` commands.
 - UAC self-relaunch for controller entry points and elevation checks in the core.
 
@@ -43,5 +43,5 @@ terminal into a headless controller that enhances the native Windows Terminal.
   positions and the drag delta advances.
 - Focus the leading pane once per drag instead of on every resize step.
 
-[Unreleased]: https://github.com/raincfhnj/winterminal-plus-plus/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/raincfhnj/winterminal-plus-plus/releases/tag/v0.2.0
+[Unreleased]: https://github.com/raincfhnj/winterminalp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/raincfhnj/winterminalp/releases/tag/v0.2.0

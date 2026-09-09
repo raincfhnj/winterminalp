@@ -1,6 +1,6 @@
-# Contributing to WinTerminal++
+# Contributing to WinTerminalP
 
-Thanks for your interest in improving WinTerminal++. This document explains how to set
+Thanks for your interest in improving WinTerminalP. This document explains how to set
 up the project, run the quality gate, and submit changes.
 
 ## Prerequisites
@@ -25,15 +25,15 @@ All of these must pass before a pull request is merged. CI runs the same command
 Run the controller in the foreground during development:
 
 ```powershell
-cargo run --bin wter -- run --no-launch
+cargo run --bin winter -- run --no-launch
 ```
 
 Always inspect the read-only plan before installing anything into a real Windows
 Terminal configuration:
 
 ```powershell
-cargo run --bin wter -- plan
-cargo run --bin wter -- doctor
+cargo run --bin winter -- plan
+cargo run --bin winter -- doctor
 ```
 
 ## Project layout

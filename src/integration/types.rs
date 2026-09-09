@@ -38,7 +38,7 @@ impl IntegrationConfig {
         let local_app_data = PathBuf::from(local_app_data);
         Ok(Self::new(
             &local_app_data,
-            local_app_data.join("WinTerminalPP").join("integration"),
+            local_app_data.join("WinTerminalP").join("integration"),
             default_documents_dir(),
         ))
     }
@@ -49,7 +49,7 @@ impl IntegrationConfig {
             .join("Microsoft")
             .join("Windows Terminal")
             .join("Fragments")
-            .join("WinTerminalPP")
+            .join("WinTerminalP")
             .join("actions.json")
     }
 

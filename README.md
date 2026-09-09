@@ -1,15 +1,15 @@
-# WinTerminal++
+# WinTerminalP
 
-[![CI](https://github.com/raincfhnj/winterminal-plus-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/raincfhnj/winterminal-plus-plus/actions/workflows/ci.yml)
+[![CI](https://github.com/raincfhnj/winterminalp/actions/workflows/ci.yml/badge.svg)](https://github.com/raincfhnj/winterminalp/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
 
 **tmux-style keyboard control for the native Windows Terminal — without replacing it.**
 
-WinTerminal++ is a headless Rust controller that adds a tmux-like two-stage prefix
+WinTerminalP is a headless Rust controller that adds a tmux-like two-stage prefix
 (`Ctrl+B`, then a second key) to the Windows Terminal you already use. It never draws
 a window, never hosts a terminal, and never manages a PTY. Windows Terminal stays the
-only UI, renderer, pane tree, tab manager, and shell owner; WinTerminal++ only turns
+only UI, renderer, pane tree, tab manager, and shell owner; WinTerminalP only turns
 prefix chords into native Windows Terminal actions.
 
 ```text
@@ -23,9 +23,9 @@ Ctrl+B, X / Z / ,     →  close pane / zoom / rename tab
 ## Why
 
 Windows Terminal has no tmux-style prefix mode, and its keybindings can only express
-"modifiers + one non-modifier key". WinTerminal++ runs a small low-level keyboard hook
+"modifiers + one non-modifier key". WinTerminalP runs a small low-level keyboard hook
 that recognizes the prefix only while a Windows Terminal window is in the foreground,
-then injects a hidden single-chord bridge key that is bound to a `User.WinTerminalPP.*`
+then injects a hidden single-chord bridge key that is bound to a `User.WinTerminalP.*`
 action. Your existing profiles, themes, fonts, shells, and keybindings are untouched.
 
 ## Features
@@ -51,8 +51,8 @@ action. Your existing profiles, themes, fonts, shells, and keybindings are untou
 - To build: Rust stable (1.85+) with the MSVC toolchain
 
 The controller runs elevated so it can inject input into both normal and
-administrator-elevated Windows Terminal windows. `wter run`, `wter launch`, and
-`winterminald.exe` self-relaunch through UAC when needed; the read-only/config commands
+administrator-elevated Windows Terminal windows. `winter run`, `winter launch`, and
+`winterd.exe` self-relaunch through UAC when needed; the read-only/config commands
 (`config`, `plan`, `install`, `uninstall`, `doctor`) do not.
 
 ## Build
@@ -65,24 +65,24 @@ This produces three binaries in `target\release`:
 
 | Binary | Purpose |
 |---|---|
-| `wter.exe` | Recommended short command entry point |
-| `winterminal.exe` | Compatibility alias with the same CLI |
-| `winterminald.exe` | Hidden background controller (double-clickable) |
+| `winter.exe` | Recommended short command entry point |
+| `winterminalp.exe` | Compatibility alias with the same CLI |
+| `winterd.exe` | Hidden background controller (double-clickable) |
 
 ## Quick start
 
 ```powershell
 # 1. See exactly what would change (read-only)
-target\release\wter.exe plan
+target\release\winter.exe plan
 
 # 2. Install the action fragment, hidden bridge keys, and shell integration
-target\release\wter.exe install
+target\release\winter.exe install
 
 # 3. Verify everything is healthy
-target\release\wter.exe doctor
+target\release\winter.exe doctor
 
 # 4. Start the controller (opens Windows Terminal)
-target\release\wter.exe
+target\release\winter.exe
 ```
 
 Press `Ctrl+B` followed by a second key to act. Press `Ctrl+B`, `Q` to stop the
@@ -124,12 +124,12 @@ geometry_poll_interval_ms = 100
 ## Configuration
 
 ```powershell
-wter config          # print the full effective config and its path
-wter config --path   # print only the path
-wter config --edit   # open it in Notepad
+winter config          # print the full effective config and its path
+winter config --path   # print only the path
+winter config --edit   # open it in Notepad
 ```
 
-The file lives at `%LOCALAPPDATA%\WinTerminalPP\config.toml`. Only the actions you want
+The file lives at `%LOCALAPPDATA%\WinTerminalP\config.toml`. Only the actions you want
 to override need to be present; everything else keeps its default. For example, a
 Vim-style layout:
 
@@ -148,7 +148,7 @@ shutdown = "q"
 The prefix must include `Ctrl` or `Alt`. `Escape` and reserved system combinations
 (`Alt+Tab`, `Alt+F4`, `Ctrl+Escape`, Windows-key chords) cannot be bound. Two actions
 cannot share a chord. Optional actions may be set to `"disabled"`. Shortcut changes do
-not require re-running `wter install`.
+not require re-running `winter install`.
 
 See [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) for the full reference.
 
@@ -166,11 +166,11 @@ See [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) for the full reference.
 ## Uninstall
 
 ```powershell
-target\release\wter.exe uninstall
+target\release\winter.exe uninstall
 ```
 
 This removes only the fragment, hidden keybindings, and shell block still owned by
-WinTerminal++.
+WinTerminalP.
 
 ## How it works
 

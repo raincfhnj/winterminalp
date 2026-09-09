@@ -7,7 +7,7 @@
 | 日期 | 2026-08-31 |
 | 发现人 | 用户手工验收 |
 | 严重程度 | P1-严重 |
-| 影响范围 | 启用 WinTerminal++ 控制器后，Explorer 向 Windows Terminal PowerShell 窗格的文件/目录拖放 |
+| 影响范围 | 启用 WinTerminalP 控制器后，Explorer 向 Windows Terminal PowerShell 窗格的文件/目录拖放 |
 | 关联 Issue/PR | 无 |
 | 关联提交 | 最终方案为不注册 OLE `IDropTarget`，见 `docs/ARCHITECTURE.md` 安全边界 |
 

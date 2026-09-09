@@ -5,9 +5,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::process::ExitCode;
 
-use winterminal::integration::{IntegrationConfig, doctor};
-use winterminal::platform::windows::{launch_windows_terminal, relaunch_current_process_elevated};
-use winterminal::{
+use winterminalp::integration::{IntegrationConfig, doctor};
+use winterminalp::platform::windows::{launch_windows_terminal, relaunch_current_process_elevated};
+use winterminalp::{
     AppError, AppResult, ControllerConfig, ControllerOptions, bridge_is_ready,
     config::{default_app_data_dir, default_config_path},
     run_controller,
@@ -35,7 +35,7 @@ fn execute() -> AppResult<()> {
     let doctor_report = doctor(&integration)?;
     if !bridge_is_ready(&doctor_report) {
         return Err(AppError::InvalidConfiguration(
-            "Windows Terminal integration is not ready; run `wter doctor` and `wter install` first"
+            "Windows Terminal integration is not ready; run `winter doctor` and `winter install` first"
                 .to_owned(),
         ));
     }

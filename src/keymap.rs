@@ -5,9 +5,9 @@ use serde_json::{Value, json};
 
 use crate::model::{Direction, TerminalAction};
 
-const ACTION_ID_PREFIX: &str = "User.WinTerminalPP.";
+const ACTION_ID_PREFIX: &str = "User.WinTerminalP.";
 
-/// A synthetic function-key chord managed by WinTerminal++.
+/// A synthetic function-key chord managed by WinTerminalP.
 ///
 /// Managed chords deliberately use synthetic high function keys so they do not
 /// overlap with the product's user-facing prefix bindings. F16 and F17 are
@@ -124,84 +124,84 @@ const MANAGED_BINDINGS: [ManagedBinding; 29] = [
         action: TerminalAction::SplitPane {
             direction: Direction::Left,
         },
-        action_id: "User.WinTerminalPP.SplitLeft",
+        action_id: "User.WinTerminalP.SplitLeft",
         bridge_chord: chord(true, true, true, 13),
     },
     ManagedBinding {
         action: TerminalAction::SplitPane {
             direction: Direction::Right,
         },
-        action_id: "User.WinTerminalPP.SplitRight",
+        action_id: "User.WinTerminalP.SplitRight",
         bridge_chord: chord(true, true, true, 14),
     },
     ManagedBinding {
         action: TerminalAction::SplitPane {
             direction: Direction::Up,
         },
-        action_id: "User.WinTerminalPP.SplitUp",
+        action_id: "User.WinTerminalP.SplitUp",
         bridge_chord: chord(true, true, true, 15),
     },
     ManagedBinding {
         action: TerminalAction::SplitPane {
             direction: Direction::Down,
         },
-        action_id: "User.WinTerminalPP.SplitDown",
+        action_id: "User.WinTerminalP.SplitDown",
         bridge_chord: chord(true, true, true, 18),
     },
     ManagedBinding {
         action: TerminalAction::FocusPane {
             direction: Direction::Left,
         },
-        action_id: "User.WinTerminalPP.FocusLeft",
+        action_id: "User.WinTerminalP.FocusLeft",
         bridge_chord: chord(true, true, true, 19),
     },
     ManagedBinding {
         action: TerminalAction::FocusPane {
             direction: Direction::Right,
         },
-        action_id: "User.WinTerminalPP.FocusRight",
+        action_id: "User.WinTerminalP.FocusRight",
         bridge_chord: chord(true, true, true, 20),
     },
     ManagedBinding {
         action: TerminalAction::FocusPane {
             direction: Direction::Up,
         },
-        action_id: "User.WinTerminalPP.FocusUp",
+        action_id: "User.WinTerminalP.FocusUp",
         bridge_chord: chord(true, true, true, 21),
     },
     ManagedBinding {
         action: TerminalAction::FocusPane {
             direction: Direction::Down,
         },
-        action_id: "User.WinTerminalPP.FocusDown",
+        action_id: "User.WinTerminalP.FocusDown",
         bridge_chord: chord(true, true, true, 22),
     },
     ManagedBinding {
         action: TerminalAction::ResizePane {
             direction: Direction::Left,
         },
-        action_id: "User.WinTerminalPP.ResizeLeft",
+        action_id: "User.WinTerminalP.ResizeLeft",
         bridge_chord: chord(true, true, true, 23),
     },
     ManagedBinding {
         action: TerminalAction::ResizePane {
             direction: Direction::Right,
         },
-        action_id: "User.WinTerminalPP.ResizeRight",
+        action_id: "User.WinTerminalP.ResizeRight",
         bridge_chord: chord(true, true, true, 24),
     },
     ManagedBinding {
         action: TerminalAction::ResizePane {
             direction: Direction::Up,
         },
-        action_id: "User.WinTerminalPP.ResizeUp",
+        action_id: "User.WinTerminalP.ResizeUp",
         bridge_chord: chord(true, false, true, 13),
     },
     ManagedBinding {
         action: TerminalAction::ResizePane {
             direction: Direction::Down,
         },
-        action_id: "User.WinTerminalPP.ResizeDown",
+        action_id: "User.WinTerminalP.ResizeDown",
         bridge_chord: chord(true, false, true, 14),
     },
     // The controller now injects the configured Prefix directly, so this static
@@ -209,87 +209,87 @@ const MANAGED_BINDINGS: [ManagedBinding; 29] = [
     // installs keep a valid action reference and their managed count stays put.
     ManagedBinding {
         action: TerminalAction::SendPrefixLiteral,
-        action_id: "User.WinTerminalPP.SendPrefixLiteral",
+        action_id: "User.WinTerminalP.SendPrefixLiteral",
         bridge_chord: chord(true, false, true, 15),
     },
     ManagedBinding {
         action: TerminalAction::NewTab,
-        action_id: "User.WinTerminalPP.NewTab",
+        action_id: "User.WinTerminalP.NewTab",
         bridge_chord: chord(true, false, true, 18),
     },
     ManagedBinding {
         action: TerminalAction::NextTab,
-        action_id: "User.WinTerminalPP.NextTab",
+        action_id: "User.WinTerminalP.NextTab",
         bridge_chord: chord(true, false, true, 19),
     },
     ManagedBinding {
         action: TerminalAction::PreviousTab,
-        action_id: "User.WinTerminalPP.PreviousTab",
+        action_id: "User.WinTerminalP.PreviousTab",
         bridge_chord: chord(true, false, true, 20),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 0 },
-        action_id: "User.WinTerminalPP.ActivateTab0",
+        action_id: "User.WinTerminalP.ActivateTab0",
         bridge_chord: chord(true, false, true, 21),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 1 },
-        action_id: "User.WinTerminalPP.ActivateTab1",
+        action_id: "User.WinTerminalP.ActivateTab1",
         bridge_chord: chord(true, false, true, 22),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 2 },
-        action_id: "User.WinTerminalPP.ActivateTab2",
+        action_id: "User.WinTerminalP.ActivateTab2",
         bridge_chord: chord(true, false, true, 23),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 3 },
-        action_id: "User.WinTerminalPP.ActivateTab3",
+        action_id: "User.WinTerminalP.ActivateTab3",
         bridge_chord: chord(true, false, true, 24),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 4 },
-        action_id: "User.WinTerminalPP.ActivateTab4",
+        action_id: "User.WinTerminalP.ActivateTab4",
         bridge_chord: chord(false, true, true, 13),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 5 },
-        action_id: "User.WinTerminalPP.ActivateTab5",
+        action_id: "User.WinTerminalP.ActivateTab5",
         bridge_chord: chord(false, true, true, 14),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 6 },
-        action_id: "User.WinTerminalPP.ActivateTab6",
+        action_id: "User.WinTerminalP.ActivateTab6",
         bridge_chord: chord(false, true, true, 15),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 7 },
-        action_id: "User.WinTerminalPP.ActivateTab7",
+        action_id: "User.WinTerminalP.ActivateTab7",
         bridge_chord: chord(false, true, true, 18),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 8 },
-        action_id: "User.WinTerminalPP.ActivateTab8",
+        action_id: "User.WinTerminalP.ActivateTab8",
         bridge_chord: chord(false, true, true, 19),
     },
     ManagedBinding {
         action: TerminalAction::ActivateTab { index: 9 },
-        action_id: "User.WinTerminalPP.ActivateTab9",
+        action_id: "User.WinTerminalP.ActivateTab9",
         bridge_chord: chord(false, true, true, 20),
     },
     ManagedBinding {
         action: TerminalAction::ClosePane,
-        action_id: "User.WinTerminalPP.ClosePane",
+        action_id: "User.WinTerminalP.ClosePane",
         bridge_chord: chord(false, true, true, 21),
     },
     ManagedBinding {
         action: TerminalAction::TogglePaneZoom,
-        action_id: "User.WinTerminalPP.TogglePaneZoom",
+        action_id: "User.WinTerminalP.TogglePaneZoom",
         bridge_chord: chord(false, true, true, 22),
     },
     ManagedBinding {
         action: TerminalAction::RenameTab,
-        action_id: "User.WinTerminalPP.RenameTab",
+        action_id: "User.WinTerminalP.RenameTab",
         bridge_chord: chord(false, true, true, 23),
     },
 ];
@@ -416,14 +416,14 @@ mod tests {
         assert_eq!(
             binding.action_definition_json(),
             json!({
-                "id": "User.WinTerminalPP.SendPrefixLiteral",
+                "id": "User.WinTerminalP.SendPrefixLiteral",
                 "command": { "action": "sendInput", "input": "\u{0002}" },
             })
         );
         assert_eq!(
             binding.keybinding_definition_json(),
             json!({
-                "id": "User.WinTerminalPP.SendPrefixLiteral",
+                "id": "User.WinTerminalP.SendPrefixLiteral",
                 "keys": "ctrl+shift+f15",
             })
         );

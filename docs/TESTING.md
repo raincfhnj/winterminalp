@@ -1,4 +1,4 @@
-# WinTerminal++ 测试策略
+# WinTerminalP 测试策略
 
 当前机器的实测结果、产物哈希和未自动化边界记录在 `docs/VERIFICATION.md`。
 
@@ -33,7 +33,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 - 自定义 Prefix 和动作能编译为不可变运行时映射。
 - 未知动作名、重复 chord、普通无修饰 Prefix、系统保留键必须失败。
 - 可选动作可设为 `disabled`，`shutdown` 不可禁用。
-- `wter config` 的完整 TOML 可以再次解析并保持相同语义。
+- `winter config` 的完整 TOML 可以再次解析并保持相同语义。
 - 旧配置缺少 `[mouse_resize]` 时获得安全默认值；命中扩展和刷新周期越界时拒绝启动。
 
 ## 4. 窗格拖动模型测试
@@ -47,7 +47,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 ## 5. Bridge 测试
 
 - 所有 TerminalAction 都有唯一 ID、command 和 chord。
-- ID 均以 `User.WinTerminalPP.` 开头。
+- ID 均以 `User.WinTerminalP.` 开头。
 - 托管 chord 只使用 F13、F14、F15、F18–F24 和约定 modifier，F16/F17 必须被测试阻止进入托管表。
 - fragment 包含 actions 且不包含 keys/keybindings。
 - 用户 keybinding 引用的 ID 全部存在于 fragment。
@@ -81,14 +81,14 @@ Fixture 至少覆盖：
 - 键盘与鼠标 Hook 在同一线程安装、停止，panic 后统一 fail-open。
 - injected 鼠标事件与 injected 键盘事件一样始终透传。
 - UI Automation 只返回有效 `TermControl` 矩形，并在聚焦前重验前台 WindowIdentity。
-- 控制器核心在访问令牌未提权时拒绝启动；`wter run`、`wter launch` 和 `winterminald` 会把原始运行参数经 UAC 自重启，避免低完整性实例悄然安装 Hook 后对管理员 Terminal 注入失败。
+- 控制器核心在访问令牌未提权时拒绝启动；`winter run`、`winter launch` 和 `winterd` 会把原始运行参数经 UAC 自重启，避免低完整性实例悄然安装 Hook 后对管理员 Terminal 注入失败。
 
 ## 8. 真实 Windows Terminal 验证
 
 真实验证必须使用专用测试窗口，不能操作用户正在工作的 Terminal：
 
 1. 记录 Stable settings 原始 SHA-256 和备份路径。
-2. 运行 `plan`，确认只增加 `User.WinTerminalPP.*`。
+2. 运行 `plan`，确认只增加 `User.WinTerminalP.*`。
 3. 运行 `install`，重新打开专用 Windows Terminal 窗口。
 4. 启动前台控制器。
 5. 验证四向 split、focus、键盘 resize，并在横向、纵向、嵌套分栏上拖动原生边界。
