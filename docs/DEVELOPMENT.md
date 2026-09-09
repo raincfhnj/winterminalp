@@ -9,6 +9,8 @@
 
 项目根目录是纯 Rust 控制器，不包含旧 Tauri/xterm 原型。
 
+终端用户只需执行一次 `.\install.ps1`：它构建 Release、把 `winter` 安装到 PATH，并执行 `winter install`。之后在任意 shell 输入 `winter` 即可启动，重启后依然有效；若集成缺失，`winter` 会在首次启动时自动重新安装。
+
 ## 常用命令
 
 ```powershell

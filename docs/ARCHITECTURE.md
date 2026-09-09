@@ -175,7 +175,7 @@ Windows Terminal 只有在 Shell 通过 `OSC 9;9` 报告 CWD 时，才会让 `sp
 |---|---|
 | 非 Terminal 前台 | Prefix 透传 |
 | 前台在派发前变化 | 丢弃动作 |
-| Bridge 未安装 | 不吞 Prefix，doctor 报告 |
+| Bridge 未安装 | `winter`/`winter launch` 首次启动自动执行安装；检测到真实冲突时仍报错并提示 `winter doctor` |
 | Hook 安装失败 | 控制器退出并记录错误 |
 | 队列满 | 丢弃本次动作，不阻塞 Hook |
 | SendInput 部分成功/失败 | 返回结构化错误并释放本次修饰键 |

@@ -49,7 +49,24 @@ Windows Terminal 没有 tmux 式的 Prefix 模式，其 keybinding 也只能表�
 `winter run`、`winter launch` 和 `winterd.exe` 在需要时通过 UAC 自重启；
 只读/配置类命令（`config`、`plan`、`install`、`uninstall`、`doctor`）不触发 UAC。
 
-## 构建
+## 快速开始
+
+```powershell
+git clone https://github.com/raincfhnj/winterminalp.git
+cd winterminalp
+.\install.ps1   # 构建、把 winter 命令装进 PATH、并安装集成
+winter          # 启动控制器（会弹出 UAC 提权）
+```
+
+`install.ps1` 只需执行一次：它用 `cargo install` 构建 Release 二进制，把
+`winter.exe` 放进已在 PATH 上的 Cargo bin 目录，并安装 Windows Terminal 集成。
+之后在任意 shell 里输入 `winter` 即可使用，关机重启后依然有效——重启后再次输入
+`winter` 就行。如果集成缺失，`winter` 会在首次启动时自动重新安装。
+
+按 `Ctrl+B` 后再按第二个键执行动作。按 `Ctrl+B`、`Q` 停止控制器，但不关闭
+Windows Terminal。
+
+### 手动构建
 
 ```powershell
 cargo build --release --bins
@@ -59,28 +76,12 @@ cargo build --release --bins
 
 | 二进制 | 用途 |
 |---|---|
-| `winter.exe` | 推荐的短命令入口 |
+| `winter.exe` | 推荐命令入口 |
 | `winterminalp.exe` | 兼容别名，共用同一 CLI |
 | `winterd.exe` | 隐藏的后台控制器（可双击） |
 
-## 快速开始
-
-```powershell
-# 1. 只读查看将要发生的变化
-target\release\winter.exe plan
-
-# 2. 安装 Action fragment、隐藏桥接键与 Shell 集成
-target\release\winter.exe install
-
-# 3. 检查是否健康
-target\release\winter.exe doctor
-
-# 4. 启动控制器（会打开 Windows Terminal）
-target\release\winter.exe
-```
-
-按 `Ctrl+B` 后再按第二个键执行动作。按 `Ctrl+B`、`Q` 停止控制器，但不关闭
-Windows Terminal。
+可直接运行 `target\release` 下的文件，或用
+`cargo install --path . --bins --locked` 安装到 PATH。
 
 ## 默认快捷键
 

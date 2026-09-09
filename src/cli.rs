@@ -124,25 +124,40 @@ fn run_command(integration: &IntegrationConfig, no_launch: bool) -> AppResult<Ex
     if relaunch_controller_elevated(arguments)? {
         return Ok(ExitCode::SUCCESS);
     }
-    let report = doctor(integration)?;
-    let bridge_ready = bridge_is_ready(&report);
-    if !bridge_ready {
-        return Err(AppError::InvalidConfiguration(
-            "Windows Terminal action bridge is not ready; run `winter doctor` and `winter install` first"
-                .to_owned(),
-        ));
-    }
+    ensure_bridge_ready(integration)?;
     let config = ControllerConfig::load_or_create(&default_config_path()?)?;
     let controller_report = run_controller(
         &config,
         ControllerOptions {
             launch_terminal: config.launch_terminal_on_start && !no_launch,
-            bridge_ready,
+            bridge_ready: true,
             ..ControllerOptions::default()
         },
     )?;
     print_json(&controller_report)?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Installs the Windows Terminal action bridge on first use.
+///
+/// This keeps `winter` a single command: a fresh clone only needs the one-time
+/// `install.ps1` to put the binary on `PATH`, and every later launch repairs a
+/// missing integration automatically. A genuine conflict still fails loudly
+/// instead of silently overwriting the user's settings.
+fn ensure_bridge_ready(integration: &IntegrationConfig) -> AppResult<()> {
+    if bridge_is_ready(&doctor(integration)?) {
+        return Ok(());
+    }
+    println!("Windows Terminal integration is not installed; setting it up now...");
+    install(integration)?;
+    if bridge_is_ready(&doctor(integration)?) {
+        Ok(())
+    } else {
+        Err(AppError::InvalidConfiguration(
+            "Windows Terminal integration could not be installed automatically; run `winter doctor` for details"
+                .to_owned(),
+        ))
+    }
 }
 
 fn configure(path_only: bool, edit: bool) -> AppResult<ExitCode> {
@@ -174,13 +189,7 @@ fn launch(integration: &IntegrationConfig) -> AppResult<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
     let _config = ControllerConfig::load_or_create(&default_config_path()?)?;
-    let report = doctor(integration)?;
-    if !bridge_is_ready(&report) {
-        return Err(AppError::InvalidConfiguration(
-            "Windows Terminal integration is not ready; run `winter doctor` and `winter install` first"
-                .to_owned(),
-        ));
-    }
+    ensure_bridge_ready(integration)?;
 
     spawn_background_controller()?;
     println!("WinTerminalP elevated controller is starting; Windows Terminal will open elevated.");
@@ -226,4 +235,40 @@ fn print_json(value: &impl Serialize) -> AppResult<()> {
     })?;
     println!("{json}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn ensure_bridge_ready_installs_then_is_idempotent() {
+        let temp = tempdir().expect("temporary directory should be created");
+        let settings = temp
+            .path()
+            .join("Packages")
+            .join("Microsoft.WindowsTerminal_8wekyb3d8bbwe")
+            .join("LocalState")
+            .join("settings.json");
+        fs::create_dir_all(settings.parent().expect("settings should have a parent"))
+            .expect("fixture directory should be created");
+        fs::write(&settings, b"{}\n").expect("fixture settings should be written");
+
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
+
+        ensure_bridge_ready(&config).expect("first launch should install the bridge");
+        assert!(bridge_is_ready(
+            &doctor(&config).expect("doctor should succeed")
+        ));
+
+        ensure_bridge_ready(&config).expect("second launch should be a no-op");
+    }
 }

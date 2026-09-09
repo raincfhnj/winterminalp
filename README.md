@@ -55,7 +55,26 @@ administrator-elevated Windows Terminal windows. `winter run`, `winter launch`, 
 `winterd.exe` self-relaunch through UAC when needed; the read-only/config commands
 (`config`, `plan`, `install`, `uninstall`, `doctor`) do not.
 
-## Build
+## Quick start
+
+```powershell
+git clone https://github.com/raincfhnj/winterminalp.git
+cd winterminalp
+.\install.ps1   # build, install the `winter` command, and set up the integration
+winter          # start the controller (Windows prompts for UAC)
+```
+
+`install.ps1` is a one-time step: it builds the release binaries with
+`cargo install`, puts `winter.exe` in the Cargo bin directory (already on `PATH`),
+and installs the Windows Terminal integration. After that, `winter` works from any
+shell and keeps working across reboots — just run `winter` again after a restart.
+If the integration is ever missing, `winter` reinstalls it automatically on first
+launch.
+
+Press `Ctrl+B` followed by a second key to act. Press `Ctrl+B`, `Q` to stop the
+controller without closing Windows Terminal.
+
+### Manual build
 
 ```powershell
 cargo build --release --bins
@@ -65,28 +84,12 @@ This produces three binaries in `target\release`:
 
 | Binary | Purpose |
 |---|---|
-| `winter.exe` | Recommended short command entry point |
+| `winter.exe` | Recommended command entry point |
 | `winterminalp.exe` | Compatibility alias with the same CLI |
 | `winterd.exe` | Hidden background controller (double-clickable) |
 
-## Quick start
-
-```powershell
-# 1. See exactly what would change (read-only)
-target\release\winter.exe plan
-
-# 2. Install the action fragment, hidden bridge keys, and shell integration
-target\release\winter.exe install
-
-# 3. Verify everything is healthy
-target\release\winter.exe doctor
-
-# 4. Start the controller (opens Windows Terminal)
-target\release\winter.exe
-```
-
-Press `Ctrl+B` followed by a second key to act. Press `Ctrl+B`, `Q` to stop the
-controller without closing Windows Terminal.
+Run them from `target\release`, or install them onto your `PATH` with
+`cargo install --path . --bins --locked`.
 
 ## Default keybindings
 

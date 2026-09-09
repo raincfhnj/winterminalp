@@ -31,6 +31,10 @@ terminal into a headless controller that enhances the native Windows Terminal.
   coordinate system.
 - `winter`, `winterminalp`, and hidden `winterd` binaries sharing one CLI.
 - `plan`, `install`, `uninstall`, `doctor`, `config`, `run`, and `launch` commands.
+- One-time `install.ps1` that builds the release binaries and puts `winter` on `PATH`.
+- `winter` and `winter launch` now install the Windows Terminal integration
+  automatically on first launch, so a fresh setup no longer needs a separate
+  `winter install` step.
 - UAC self-relaunch for controller entry points and elevation checks in the core.
 
 ### Fixed
