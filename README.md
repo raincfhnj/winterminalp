@@ -1,0 +1,225 @@
+# WinTerminal++
+
+[![CI](https://github.com/raincfhnj/winterminal-plus-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/raincfhnj/winterminal-plus-plus/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
+
+**tmux-style keyboard control for the native Windows Terminal — without replacing it.**
+
+WinTerminal++ is a headless Rust controller that adds a tmux-like two-stage prefix
+(`Ctrl+B`, then a second key) to the Windows Terminal you already use. It never draws
+a window, never hosts a terminal, and never manages a PTY. Windows Terminal stays the
+only UI, renderer, pane tree, tab manager, and shell owner; WinTerminal++ only turns
+prefix chords into native Windows Terminal actions.
+
+```text
+Ctrl+B, Shift+Right   →  split pane to the right
+Ctrl+B, ←/→/↑/↓       →  move focus
+Ctrl+B, Ctrl+→        →  resize pane
+Ctrl+B, C / N / P     →  new / next / previous tab
+Ctrl+B, X / Z / ,     →  close pane / zoom / rename tab
+```
+
+## Why
+
+Windows Terminal has no tmux-style prefix mode, and its keybindings can only express
+"modifiers + one non-modifier key". WinTerminal++ runs a small low-level keyboard hook
+that recognizes the prefix only while a Windows Terminal window is in the foreground,
+then injects a hidden single-chord bridge key that is bound to a `User.WinTerminalPP.*`
+action. Your existing profiles, themes, fonts, shells, and keybindings are untouched.
+
+## Features
+
+- **Two-stage prefix** — default `Ctrl+B`; fully configurable, including timeout.
+- **Panes** — split, focus, and resize in all four directions.
+- **Tabs** — new, next/previous, index activation (`0`–`9`), and native rename.
+- **Mouse divider drag** — drag a native pane divider; geometry is inferred from
+  disposable UI Automation rectangles and translated to native `resizePane` steps.
+- **Directory inheritance** — installs a managed `OSC 9;9` PowerShell prompt wrapper so
+  duplicated panes open in the same working directory.
+- **Safe, reversible install** — lossless JSONC editing that preserves comments,
+  ordering, indentation, and trailing commas; raw-byte backups, SHA-256 compare-and-swap,
+  and an uninstall that keeps anything you edited.
+- **Transparent by default** — keys pass through to every non-Terminal foreground app,
+  and injected input never activates the prefix.
+- **No telemetry** — no network access, no terminal-buffer or keystroke logging.
+
+## Requirements
+
+- Windows 10/11 x64
+- Windows Terminal 1.21 or newer
+- To build: Rust stable (1.85+) with the MSVC toolchain
+
+The controller runs elevated so it can inject input into both normal and
+administrator-elevated Windows Terminal windows. `wter run`, `wter launch`, and
+`winterminald.exe` self-relaunch through UAC when needed; the read-only/config commands
+(`config`, `plan`, `install`, `uninstall`, `doctor`) do not.
+
+## Build
+
+```powershell
+cargo build --release --bins
+```
+
+This produces three binaries in `target\release`:
+
+| Binary | Purpose |
+|---|---|
+| `wter.exe` | Recommended short command entry point |
+| `winterminal.exe` | Compatibility alias with the same CLI |
+| `winterminald.exe` | Hidden background controller (double-clickable) |
+
+## Quick start
+
+```powershell
+# 1. See exactly what would change (read-only)
+target\release\wter.exe plan
+
+# 2. Install the action fragment, hidden bridge keys, and shell integration
+target\release\wter.exe install
+
+# 3. Verify everything is healthy
+target\release\wter.exe doctor
+
+# 4. Start the controller (opens Windows Terminal)
+target\release\wter.exe
+```
+
+Press `Ctrl+B` followed by a second key to act. Press `Ctrl+B`, `Q` to stop the
+controller without closing Windows Terminal.
+
+## Default keybindings
+
+All shortcuts work only while Windows Terminal is in the foreground. Press and release
+`Ctrl+B`, then press the second key.
+
+| Second key | Action |
+|---|---|
+| `←` / `→` / `↑` / `↓` | Focus the pane in that direction |
+| `Shift` + arrow | Split a new pane in that direction |
+| `Ctrl` + arrow | Resize the active pane in that direction |
+| `C` | New tab |
+| `N` / `P` | Next / previous tab |
+| `0`–`9` | Activate the zero-based tab index |
+| `X` | Close the active pane |
+| `Z` | Toggle pane zoom |
+| `,` | Rename the current tab |
+| `B` | Send a literal prefix (default `Ctrl+B`; follows a custom prefix) |
+| `Q` | Stop the controller (does not close Windows Terminal) |
+| `Escape` | Cancel the prefix |
+
+## Mouse resize
+
+Move the pointer over a native Windows Terminal divider; the cursor changes to the
+horizontal or vertical resize shape. Hold the left button and drag to resize the
+adjacent panes. Sizes change in Windows Terminal's native ~5% parent-split steps.
+
+```toml
+[mouse_resize]
+enabled = true
+divider_hit_slop_px = 8
+geometry_poll_interval_ms = 100
+```
+
+## Configuration
+
+```powershell
+wter config          # print the full effective config and its path
+wter config --path   # print only the path
+wter config --edit   # open it in Notepad
+```
+
+The file lives at `%LOCALAPPDATA%\WinTerminalPP\config.toml`. Only the actions you want
+to override need to be present; everything else keeps its default. For example, a
+Vim-style layout:
+
+```toml
+prefix = "ctrl+a"
+
+[shortcuts]
+focus_left = "h"
+focus_down = "j"
+focus_up = "k"
+focus_right = "l"
+new_tab = "t"
+shutdown = "q"
+```
+
+The prefix must include `Ctrl` or `Alt`. `Escape` and reserved system combinations
+(`Alt+Tab`, `Alt+F4`, `Ctrl+Escape`, Windows-key chords) cannot be bound. Two actions
+cannot share a chord. Optional actions may be set to `"disabled"`. Shortcut changes do
+not require re-running `wter install`.
+
+See [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) for the full reference.
+
+## Safety and privacy
+
+- The keyboard hook does not record, store, or transmit keystrokes.
+- The mouse hook only tests whether the cursor is near a cached divider; no trajectory
+  is stored or sent.
+- Injected (synthetic) input is always passed through and never re-enters the prefix
+  state machine.
+- The controller opens no network port and reads no terminal buffer.
+- Installs back up raw bytes before writing and use compare-and-swap; uninstall removes
+  only entries that still match the managed manifest and reports anything you changed.
+
+## Uninstall
+
+```powershell
+target\release\wter.exe uninstall
+```
+
+This removes only the fragment, hidden keybindings, and shell block still owned by
+WinTerminal++.
+
+## How it works
+
+The project is a small modular Rust monolith. Pure state machines (`prefix`,
+`pane_layout`) have no Win32 dependency; a narrow `platform/windows` adapter owns the
+low-level hooks, UI Automation, foreground identity, and `SendInput`; `integration`
+owns lossless JSONC transactions and backups. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and failure
+semantics.
+
+## Documentation
+
+- [`docs/PRD.md`](docs/PRD.md) — product requirements
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and failure semantics
+- [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) — keybinding reference
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — build and development guide
+- [`docs/TESTING.md`](docs/TESTING.md) — test strategy and manual verification
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — real-environment verification record
+- [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — implementation plan
+- [`docs/fault-reviews/`](docs/fault-reviews) — post-mortems
+
+## Limitations
+
+- Windows Terminal does not expose a pane tree or an action-execution receipt, so pane
+  geometry is inferred from visible `TermControl` rectangles and `SendInput` success
+  only proves the event was inserted.
+- Resizing follows Windows Terminal's ~5% native steps, not arbitrary pixel sizes.
+- The project is Windows-only.
+
+## Contributing
+
+Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) first, and
+run the quality gate before opening a pull request:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets
+```
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for
+inclusion in this work, as defined in the Apache-2.0 license, shall be dual licensed as
+above, without any additional terms or conditions.
