@@ -18,7 +18,14 @@ pub(crate) struct FileSnapshot {
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for &byte in digest.as_slice() {
+        hex.push(HEX[usize::from(byte >> 4)] as char);
+        hex.push(HEX[usize::from(byte & 0x0f)] as char);
+    }
+    hex
 }
 
 pub(crate) fn read_snapshot(path: &Path) -> AppResult<FileSnapshot> {
