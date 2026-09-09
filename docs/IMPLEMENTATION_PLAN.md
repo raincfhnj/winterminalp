@@ -16,7 +16,7 @@
 
 | 类别 | v0.1 | v0.2 目标 | 决策 |
 |---|---|---|---|
-| 界面 | Tauri + React | Windows Terminal 原生界面 | 旧实现归档 |
+| 界面 | Tauri + React | Windows Terminal 原生界面 | 旧实现已移除 |
 | 渲染 | xterm | Windows Terminal | 删除默认依赖 |
 | Shell/PTY | Rust portable-pty | Windows Terminal 管理 | 不再重复管理 |
 | 布局 | 自研二叉树 | Windows Terminal 原生 pane tree | 只缓存可丢弃 `TermControl` 矩形，不保存布局副本 |
@@ -25,7 +25,7 @@
 | 配置 | 应用内 IPC | App TOML + lossless Terminal JSONC | 新增 |
 | 安全边界 | WebView capability | 前台身份、UIPI、配置事务 | 重写 |
 
-旧原型位于 `archive/tauri-xterm-prototype/`，不参与根 Cargo 构建。
+旧 Tauri/xterm 原型已在 v0.2 重写时移除，仓库只保留根 Cargo 构建。
 
 ## 3. 架构
 

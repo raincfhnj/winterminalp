@@ -9,7 +9,7 @@
 | 严重程度 | P1-严重 |
 | 影响范围 | 启用 WinTerminal++ 控制器后，Explorer 向 Windows Terminal PowerShell 窗格的文件/目录拖放 |
 | 关联 Issue/PR | 无 |
-| 关联提交 | 未提交；工作区为未建立基线的 Git 工作树 |
+| 关联提交 | 最终方案为不注册 OLE `IDropTarget`，见 `docs/ARCHITECTURE.md` 安全边界 |
 
 ## 1. 问题描述
 

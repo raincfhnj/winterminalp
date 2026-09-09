@@ -30,7 +30,7 @@ v0.2 的核心原则是：
 
 > 不替代 Windows Terminal，只增强它的键盘控制能力。
 
-旧 Tauri/xterm 原型已完整归档到 `archive/tauri-xterm-prototype/`，对应文档保存在 `docs/archive/tauri-xterm-prototype/`，不再作为默认构建入口。
+旧 Tauri/xterm 原型已在 v0.2 重写时移除，不再作为构建入口。
 
 ## 3. 产品目标
 

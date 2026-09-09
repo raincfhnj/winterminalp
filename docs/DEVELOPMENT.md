@@ -7,7 +7,7 @@
 - Windows Terminal 1.21+。
 - MSVC C++ Build Tools。
 
-项目根目录是 Rust 控制器。旧 Tauri/xterm 原型位于 `archive/tauri-xterm-prototype/`，不参与默认构建。
+项目根目录是纯 Rust 控制器，不包含旧 Tauri/xterm 原型。
 
 ## 常用命令
 
