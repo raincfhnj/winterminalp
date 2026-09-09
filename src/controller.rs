@@ -74,11 +74,11 @@ mod implementation {
     use std::sync::{Arc, RwLock};
     use std::time::{Duration, Instant};
 
-    use crate::model::WindowIdentity;
+    use crate::model::{TerminalAction, WindowIdentity};
     use crate::pane_layout::{PaneDivider, ScreenPoint};
     use crate::platform::windows::{
         HookDecision, InputHook, MouseEventKind, PlatformError, RawInputEvent, SingleInstanceGuard,
-        TerminalLaunchTarget, foreground_hwnd, is_current_process_elevated,
+        enable_per_monitor_dpi_awareness, foreground_hwnd, is_current_process_elevated,
         launch_windows_terminal, show_pane_resize_cursor,
     };
     use crate::prefix::{
@@ -99,6 +99,7 @@ mod implementation {
         config: &ControllerConfig,
         options: ControllerOptions,
     ) -> AppResult<ControllerRunReport> {
+        enable_per_monitor_dpi_awareness();
         validate_options(options)?;
         if !is_current_process_elevated().map_err(map_platform_error)? {
             return Err(AppError::ControllerRequiresElevation);
@@ -112,8 +113,7 @@ mod implementation {
 
         let _single_instance = SingleInstanceGuard::acquire().map_err(map_platform_error)?;
         if options.launch_terminal {
-            let _child = launch_windows_terminal(&TerminalLaunchTarget::NewWindow)
-                .map_err(map_platform_error)?;
+            let _child = launch_windows_terminal().map_err(map_platform_error)?;
         }
 
         let desktop_cache =
@@ -127,7 +127,9 @@ mod implementation {
         let (shutdown_sender, shutdown_receiver) = mpsc::sync_channel(1);
 
         let mut normalizer = KeyboardNormalizer::default();
-        let mut prefix = PrefixMachine::new(config.prefix_config()?);
+        let prefix_runtime = config.prefix_config()?;
+        let prefix_chord = prefix_runtime.prefix_chord;
+        let mut prefix = PrefixMachine::new(prefix_runtime);
         let mut pending_shutdown_key = None;
         let mouse_resize_enabled = config.mouse_resize.enabled;
         let divider_hit_slop_pixels = i32::from(config.mouse_resize.divider_hit_slop_px);
@@ -142,10 +144,15 @@ mod implementation {
                     if let Some(command) = outcome.command {
                         match command {
                             PrefixCommand::Dispatch { target, action } => {
-                                if worker_sender
-                                    .try_send(WorkerMessage::Dispatch { target, action })
-                                    .is_err()
-                                {
+                                let message = if action == TerminalAction::SendPrefixLiteral {
+                                    WorkerMessage::SendLiteralPrefix {
+                                        target,
+                                        chord: prefix_chord,
+                                    }
+                                } else {
+                                    WorkerMessage::Dispatch { target, action }
+                                };
+                                if worker_sender.try_send(message).is_err() {
                                     dropped_actions_for_hook.fetch_add(1, Ordering::Relaxed);
                                 }
                             }
@@ -172,10 +179,9 @@ mod implementation {
                     match raw_event.kind {
                         MouseEventKind::LeftDown => {
                             let _ = prefix.cancel(CancelReason::PointerInput);
-                            let decision = pointer_drag.begin(
-                                divider_for_hook(&cached_desktop, point, divider_hit_slop_pixels),
-                                point,
-                            );
+                            let divider =
+                                divider_for_hook(&cached_desktop, point, divider_hit_slop_pixels);
+                            let decision = pointer_drag.begin(divider, point);
                             if let Some(axis) = decision.cursor_axis() {
                                 let _ = show_pane_resize_cursor(axis);
                             }
@@ -189,6 +195,7 @@ mod implementation {
                                     focus_point: resize.intent.focus_point,
                                     direction: resize.intent.direction,
                                     steps: resize.intent.steps,
+                                    drag_sequence: resize.sequence,
                                 };
                                 if worker_sender.try_send(message).is_err() {
                                     dropped_actions_for_hook.fetch_add(1, Ordering::Relaxed);
@@ -197,7 +204,12 @@ mod implementation {
                             if let Some(axis) = decision.cursor_axis() {
                                 let _ = show_pane_resize_cursor(axis);
                             }
-                            hook_decision(decision.consumes())
+                            // Consuming a move freezes the hardware cursor, and a
+                            // frozen cursor stops reporting cumulative positions,
+                            // so the drag delta would never advance. The initial
+                            // button-down was already consumed, so passing moves
+                            // through cannot start a text selection in the target.
+                            HookDecision::Pass
                         }
                         MouseEventKind::LeftUp => hook_decision(pointer_drag.end().consumes()),
                     }

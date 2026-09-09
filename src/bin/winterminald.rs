@@ -6,9 +6,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use winterminal::integration::{IntegrationConfig, doctor};
-use winterminal::platform::windows::{
-    TerminalLaunchTarget, launch_windows_terminal, relaunch_current_process_elevated,
-};
+use winterminal::platform::windows::{launch_windows_terminal, relaunch_current_process_elevated};
 use winterminal::{
     AppError, AppResult, ControllerConfig, ControllerOptions, bridge_is_ready,
     config::{default_app_data_dir, default_config_path},
@@ -55,8 +53,8 @@ fn execute() -> AppResult<()> {
 
     match result {
         Err(AppError::ControllerAlreadyRunning) if should_launch => {
-            let _child = launch_windows_terminal(&TerminalLaunchTarget::NewWindow)
-                .map_err(|error| AppError::Native(error.to_string()))?;
+            let _child =
+                launch_windows_terminal().map_err(|error| AppError::Native(error.to_string()))?;
             Ok(())
         }
         Err(AppError::ControllerAlreadyRunning) => Ok(()),

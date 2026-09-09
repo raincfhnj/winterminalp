@@ -5,6 +5,8 @@ use crate::pane_layout::{PaneDivider, PaneDrag, PaneResizeIntent, ScreenPoint, S
 pub(super) struct PointerResizeRequest {
     pub target: WindowIdentity,
     pub intent: PaneResizeIntent,
+    /// Identifier for the drag that produced this request.
+    pub sequence: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +45,7 @@ impl PointerDecision {
 struct ActivePaneDrag {
     target: WindowIdentity,
     drag: PaneDrag,
+    sequence: u64,
     canceled: bool,
 }
 
@@ -54,6 +57,7 @@ struct ActivePaneDrag {
 #[derive(Debug, Default)]
 pub(super) struct PointerDragState {
     active: Option<ActivePaneDrag>,
+    next_sequence: u64,
 }
 
 impl PointerDragState {
@@ -67,9 +71,11 @@ impl PointerDragState {
             return PointerDecision::Pass;
         };
 
+        self.next_sequence = self.next_sequence.wrapping_add(1);
         self.active = Some(ActivePaneDrag {
             target,
             drag: PaneDrag::begin(divider, point),
+            sequence: self.next_sequence,
             canceled: false,
         });
         PointerDecision::Consume {
@@ -101,12 +107,14 @@ impl PointerDragState {
         }
 
         let cursor_axis = active.drag.axis();
+        let sequence = active.sequence;
         let resize = active
             .drag
             .update(point)
             .map(|intent| PointerResizeRequest {
                 target: active.target,
                 intent,
+                sequence,
             });
         PointerDecision::Consume {
             cursor_axis: Some(cursor_axis),

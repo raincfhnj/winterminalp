@@ -118,7 +118,7 @@ v0.2 的核心原则是：
 | 关闭窗格 | `closePane` | 沿用 Windows Terminal 对最后窗格/标签页的行为 |
 | 临时放大 | `togglePaneZoom` | 再次执行恢复 |
 
-当前目录继承依赖 Shell Integration 向 Windows Terminal 报告 CWD；无法获取时遵循 Windows Terminal 自身行为。
+当前目录继承依赖 Shell Integration 向 Windows Terminal 报告 CWD。`wter install` 会在 PowerShell Profile 中安装受管的 `OSC 9;9` 提示符包装（带备份、幂等、可卸载），使 `splitPane`（`splitMode: duplicate`）与 `duplicateTab` 继承活动窗格目录；无法获取时遵循 Windows Terminal 自身行为。
 
 ### FR-005 标签页操作
 

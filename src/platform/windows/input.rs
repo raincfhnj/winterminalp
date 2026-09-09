@@ -17,7 +17,6 @@ use super::hook::CONTROLLER_INPUT_MARKER;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputDispatch {
     pub sent: u32,
-    pub synthesized_modifiers: u8,
 }
 
 /// Sends a managed Windows Terminal bridge chord to an unchanged foreground
@@ -30,8 +29,53 @@ pub fn send_bridge_chord(
     target: WindowIdentity,
     chord: BridgeChord,
 ) -> PlatformResult<InputDispatch> {
-    let snapshot = ModifierSnapshot::capture(chord.function_key)?;
-    let plan = plan_bridge_events(chord, snapshot)?;
+    let virtual_key = function_virtual_key(chord.function_key)?;
+    send_key_chord(target, virtual_key, chord.ctrl, chord.alt, chord.shift)
+}
+
+/// Sends one arbitrary key chord to an unchanged foreground target.
+///
+/// Used for hidden bridge function keys. Only modifiers this call synthesizes
+/// are released; modifiers already held by the user are preserved, extra held
+/// modifiers fail closed, and a target key that is already physically held is
+/// rejected before any input is injected.
+fn send_key_chord(
+    target: WindowIdentity,
+    virtual_key: VIRTUAL_KEY,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+) -> PlatformResult<InputDispatch> {
+    send_chord(target, virtual_key, ctrl, alt, shift, true)
+}
+
+/// Sends one chord even when its target key is already physically held.
+///
+/// Literal prefix replay is triggered by the key-down of the very key it
+/// re-injects, so the normal "target key already held" guard would always fail.
+/// That physical key-down and its matching key-up are consumed by the
+/// controller before reaching the target, so the injected chord is still the
+/// only complete key transition the target observes.
+pub fn send_literal_chord(
+    target: WindowIdentity,
+    virtual_key: VIRTUAL_KEY,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+) -> PlatformResult<InputDispatch> {
+    send_chord(target, virtual_key, ctrl, alt, shift, false)
+}
+
+fn send_chord(
+    target: WindowIdentity,
+    virtual_key: VIRTUAL_KEY,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    check_target_key: bool,
+) -> PlatformResult<InputDispatch> {
+    let snapshot = ModifierSnapshot::capture(virtual_key);
+    let plan = plan_chord_events(virtual_key, ctrl, alt, shift, snapshot, check_target_key)?;
 
     let actual_foreground = foreground_hwnd();
     if actual_foreground != target.hwnd {
@@ -77,10 +121,7 @@ pub fn send_bridge_chord(
         });
     }
 
-    Ok(InputDispatch {
-        sent,
-        synthesized_modifiers: plan.synthesized_modifiers,
-    })
+    Ok(InputDispatch { sent })
 }
 
 fn input_count(count: usize) -> PlatformResult<u32> {
@@ -98,19 +139,18 @@ struct ModifierSnapshot {
     alt: bool,
     shift: bool,
     windows: bool,
-    function_key: bool,
+    target_key: bool,
 }
 
 impl ModifierSnapshot {
-    fn capture(function_key: u8) -> PlatformResult<Self> {
-        let function_key = function_virtual_key(function_key)?;
-        Ok(Self {
+    fn capture(target_key: VIRTUAL_KEY) -> Self {
+        Self {
             control: key_is_down(VK_CONTROL),
             alt: key_is_down(VK_MENU),
             shift: key_is_down(VK_SHIFT),
             windows: key_is_down(VK_LWIN) || key_is_down(VK_RWIN),
-            function_key: key_is_down(function_key),
-        })
+            target_key: key_is_down(target_key),
+        }
     }
 }
 
@@ -129,7 +169,6 @@ enum KeyTransition {
 #[derive(Debug, PartialEq, Eq)]
 struct InputPlan {
     events: Vec<PlannedKeyEvent>,
-    synthesized_modifiers: u8,
 }
 
 impl InputPlan {
@@ -167,10 +206,16 @@ impl InputPlan {
     }
 }
 
-fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> PlatformResult<InputPlan> {
-    let function_key = function_virtual_key(chord.function_key)?;
-    if snapshot.function_key {
-        return Err(PlatformError::FunctionKeyHeld(chord.function_key));
+fn plan_chord_events(
+    virtual_key: VIRTUAL_KEY,
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    snapshot: ModifierSnapshot,
+    check_target_key: bool,
+) -> PlatformResult<InputPlan> {
+    if check_target_key && snapshot.target_key {
+        return Err(PlatformError::TargetKeyHeld(virtual_key.0));
     }
     if snapshot.windows {
         return Err(PlatformError::UnexpectedModifierHeld(ModifierKey::Windows));
@@ -179,7 +224,7 @@ fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> Platfor
     let mut events = Vec::with_capacity(8);
     let mut synthesized = Vec::with_capacity(3);
     plan_modifier(
-        chord.ctrl,
+        ctrl,
         snapshot.control,
         ModifierKey::Control,
         VK_LCONTROL,
@@ -187,7 +232,7 @@ fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> Platfor
         &mut synthesized,
     )?;
     plan_modifier(
-        chord.alt,
+        alt,
         snapshot.alt,
         ModifierKey::Alt,
         VK_LMENU,
@@ -195,7 +240,7 @@ fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> Platfor
         &mut synthesized,
     )?;
     plan_modifier(
-        chord.shift,
+        shift,
         snapshot.shift,
         ModifierKey::Shift,
         VK_LSHIFT,
@@ -204,11 +249,11 @@ fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> Platfor
     )?;
 
     events.push(PlannedKeyEvent {
-        virtual_key: function_key,
+        virtual_key,
         transition: KeyTransition::Down,
     });
     events.push(PlannedKeyEvent {
-        virtual_key: function_key,
+        virtual_key,
         transition: KeyTransition::Up,
     });
     events.extend(
@@ -222,10 +267,7 @@ fn plan_bridge_events(chord: BridgeChord, snapshot: ModifierSnapshot) -> Platfor
             }),
     );
 
-    Ok(InputPlan {
-        events,
-        synthesized_modifiers: synthesized.len() as u8,
-    })
+    Ok(InputPlan { events })
 }
 
 fn plan_modifier(
@@ -292,13 +334,8 @@ fn event_to_input(event: PlannedKeyEvent) -> INPUT {
 mod tests {
     use super::*;
 
-    fn chord(ctrl: bool, alt: bool, shift: bool, function_key: u8) -> BridgeChord {
-        BridgeChord {
-            ctrl,
-            alt,
-            shift,
-            function_key,
-        }
+    fn fkey(function_key: u8) -> VIRTUAL_KEY {
+        function_virtual_key(function_key).expect("fixture function key should be valid")
     }
 
     #[test]
@@ -313,16 +350,19 @@ mod tests {
 
     #[test]
     fn only_releases_modifiers_synthesized_by_this_dispatch() {
-        let plan = plan_bridge_events(
-            chord(true, true, false, 13),
+        let plan = plan_chord_events(
+            fkey(13),
+            true,
+            true,
+            false,
             ModifierSnapshot {
                 control: true,
                 ..ModifierSnapshot::default()
             },
+            true,
         )
         .expect("valid plan");
 
-        assert_eq!(plan.synthesized_modifiers, 1);
         assert_eq!(
             plan.events,
             vec![
@@ -347,14 +387,77 @@ mod tests {
     }
 
     #[test]
+    fn plans_a_literal_character_chord() {
+        let plan = plan_chord_events(
+            VIRTUAL_KEY(u16::from(b'B')),
+            true,
+            false,
+            false,
+            ModifierSnapshot::default(),
+            false,
+        )
+        .expect("valid plan");
+
+        assert_eq!(
+            plan.events,
+            vec![
+                PlannedKeyEvent {
+                    virtual_key: VK_LCONTROL,
+                    transition: KeyTransition::Down,
+                },
+                PlannedKeyEvent {
+                    virtual_key: VIRTUAL_KEY(u16::from(b'B')),
+                    transition: KeyTransition::Down,
+                },
+                PlannedKeyEvent {
+                    virtual_key: VIRTUAL_KEY(u16::from(b'B')),
+                    transition: KeyTransition::Up,
+                },
+                PlannedKeyEvent {
+                    virtual_key: VK_LCONTROL,
+                    transition: KeyTransition::Up,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn literal_replay_allows_a_physically_held_target_key() {
+        let held = ModifierSnapshot {
+            target_key: true,
+            ..ModifierSnapshot::default()
+        };
+
+        assert!(matches!(
+            plan_chord_events(VIRTUAL_KEY(u16::from(b'B')), true, false, false, held, true),
+            Err(PlatformError::TargetKeyHeld(_))
+        ));
+        assert!(
+            plan_chord_events(
+                VIRTUAL_KEY(u16::from(b'B')),
+                true,
+                false,
+                false,
+                held,
+                false
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn refuses_extra_physical_modifier() {
         assert!(matches!(
-            plan_bridge_events(
-                chord(false, false, false, 13),
+            plan_chord_events(
+                fkey(13),
+                false,
+                false,
+                false,
                 ModifierSnapshot {
                     shift: true,
                     ..ModifierSnapshot::default()
-                }
+                },
+                true
             ),
             Err(PlatformError::UnexpectedModifierHeld(ModifierKey::Shift))
         ));
@@ -362,8 +465,15 @@ mod tests {
 
     #[test]
     fn cleanup_releases_only_keys_left_down_by_partial_insert() {
-        let plan = plan_bridge_events(chord(true, true, false, 13), ModifierSnapshot::default())
-            .expect("valid plan");
+        let plan = plan_chord_events(
+            fkey(13),
+            true,
+            true,
+            false,
+            ModifierSnapshot::default(),
+            true,
+        )
+        .expect("valid plan");
 
         assert_eq!(
             plan.cleanup_after(3),
@@ -387,8 +497,15 @@ mod tests {
 
     #[test]
     fn every_input_carries_controller_marker() {
-        let plan = plan_bridge_events(chord(false, false, false, 24), ModifierSnapshot::default())
-            .expect("valid plan");
+        let plan = plan_chord_events(
+            fkey(24),
+            false,
+            false,
+            false,
+            ModifierSnapshot::default(),
+            true,
+        )
+        .expect("valid plan");
 
         for input in plan.to_inputs() {
             // SAFETY: event_to_input initialized the active union member as a

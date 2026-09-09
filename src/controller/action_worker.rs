@@ -1,22 +1,35 @@
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread::{self, JoinHandle};
 
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+
 use crate::keymap::binding_for_action;
 use crate::model::{Direction, TerminalAction, WindowIdentity};
 use crate::pane_layout::ScreenPoint;
-use crate::platform::windows::{TerminalAccessibility, send_bridge_chord};
+use crate::platform::windows::{TerminalAccessibility, send_bridge_chord, send_literal_chord};
+use crate::prefix::KeyChord;
 use crate::{AppError, AppResult};
+
+use super::keyboard::virtual_key_for_logical_key;
 
 pub(super) enum WorkerMessage {
     Dispatch {
         target: WindowIdentity,
         action: TerminalAction,
     },
+    /// Replays the configured Prefix chord so the shell receives it literally.
+    SendLiteralPrefix {
+        target: WindowIdentity,
+        chord: KeyChord,
+    },
     ResizePaneByPointer {
         target: WindowIdentity,
         focus_point: ScreenPoint,
         direction: Direction,
         steps: u8,
+        /// Monotonic identifier for one pointer drag, so the leading pane is
+        /// focused once per drag without depending on a separate end message.
+        drag_sequence: u64,
     },
     Stop,
 }
@@ -74,15 +87,28 @@ impl Drop for ActionWorker {
 fn run(receiver: Receiver<WorkerMessage>) -> WorkerReport {
     let mut report = WorkerReport::default();
     let mut accessibility = None;
+    let mut last_focused = None;
     while let Ok(message) = receiver.recv() {
         let result = match message {
             WorkerMessage::Dispatch { target, action } => dispatch_action(target, action),
+            WorkerMessage::SendLiteralPrefix { target, chord } => {
+                dispatch_literal_prefix(target, chord)
+            }
             WorkerMessage::ResizePaneByPointer {
                 target,
                 focus_point,
                 direction,
                 steps,
-            } => dispatch_pointer_resize(&mut accessibility, target, focus_point, direction, steps),
+                drag_sequence,
+            } => dispatch_pointer_resize(
+                &mut accessibility,
+                &mut last_focused,
+                target,
+                focus_point,
+                direction,
+                steps,
+                drag_sequence,
+            ),
             WorkerMessage::Stop => break,
         };
 
@@ -105,12 +131,28 @@ fn dispatch_action(target: WindowIdentity, action: TerminalAction) -> Result<u64
         .map_err(|error| error.to_string())
 }
 
+fn dispatch_literal_prefix(target: WindowIdentity, chord: KeyChord) -> Result<u64, String> {
+    let virtual_key = virtual_key_for_logical_key(chord.key)
+        .ok_or_else(|| format!("configured prefix key {:?} cannot be injected", chord.key))?;
+    send_literal_chord(
+        target,
+        VIRTUAL_KEY(virtual_key),
+        chord.modifiers.ctrl,
+        chord.modifiers.alt,
+        chord.modifiers.shift,
+    )
+    .map(|_| 1)
+    .map_err(|error| error.to_string())
+}
+
 fn dispatch_pointer_resize(
     accessibility: &mut Option<TerminalAccessibility>,
+    last_focused: &mut Option<u64>,
     target: WindowIdentity,
     focus_point: ScreenPoint,
     direction: Direction,
     steps: u8,
+    drag_sequence: u64,
 ) -> Result<u64, String> {
     if steps == 0 {
         return Ok(0);
@@ -119,11 +161,17 @@ fn dispatch_pointer_resize(
         *accessibility =
             Some(TerminalAccessibility::initialize().map_err(|error| error.to_string())?);
     }
-    accessibility
-        .as_ref()
-        .expect("accessibility is initialized above")
-        .focus_pane_at(target, focus_point)
-        .map_err(|error| error.to_string())?;
+    // The leading pane of a divider is stable for the whole drag, so only focus
+    // once per drag. Keying on the drag sequence (rather than a separate end
+    // message) keeps this correct even when the action queue is saturated.
+    if *last_focused != Some(drag_sequence) {
+        accessibility
+            .as_ref()
+            .expect("accessibility is initialized above")
+            .focus_pane_at(target, focus_point)
+            .map_err(|error| error.to_string())?;
+        *last_focused = Some(drag_sequence);
+    }
 
     let action = TerminalAction::ResizePane { direction };
     let binding = binding_for_action(action)

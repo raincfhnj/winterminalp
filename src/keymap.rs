@@ -204,6 +204,9 @@ const MANAGED_BINDINGS: [ManagedBinding; 29] = [
         action_id: "User.WinTerminalPP.ResizeDown",
         bridge_chord: chord(true, false, true, 14),
     },
+    // The controller now injects the configured Prefix directly, so this static
+    // action and chord are never dispatched. They are retained so existing
+    // installs keep a valid action reference and their managed count stays put.
     ManagedBinding {
         action: TerminalAction::SendPrefixLiteral,
         action_id: "User.WinTerminalPP.SendPrefixLiteral",
@@ -304,18 +307,6 @@ pub fn binding_for_action(action: TerminalAction) -> Option<&'static ManagedBind
 }
 
 #[must_use]
-pub fn binding_for_chord(chord: BridgeChord) -> Option<&'static ManagedBinding> {
-    MANAGED_BINDINGS
-        .iter()
-        .find(|binding| binding.bridge_chord == chord)
-}
-
-#[must_use]
-pub fn action_for_chord(chord: BridgeChord) -> Option<TerminalAction> {
-    binding_for_chord(chord).map(|binding| binding.action)
-}
-
-#[must_use]
 pub const fn action_id_prefix() -> &'static str {
     ACTION_ID_PREFIX
 }
@@ -376,11 +367,9 @@ mod tests {
     }
 
     #[test]
-    fn every_binding_round_trips_by_action_and_chord() {
+    fn every_binding_round_trips_by_action() {
         for binding in managed_bindings() {
             assert_eq!(binding_for_action(binding.action), Some(binding));
-            assert_eq!(binding_for_chord(binding.bridge_chord), Some(binding));
-            assert_eq!(action_for_chord(binding.bridge_chord), Some(binding.action));
         }
     }
 

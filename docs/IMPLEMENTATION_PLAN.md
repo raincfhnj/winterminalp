@@ -124,7 +124,7 @@ struct WindowIdentity {
 | `wter doctor` | 输出环境、安装和权限诊断 | 否 |
 | `wter run` | 前台运行控制器，便于开发 | 仅进程内 |
 
-默认安装目标为已初始化的 Stable；显式参数可选择 Preview、Canary 或 Unpackaged。不存在 `settings.json` 的通道标记为 Pending，不创建伪配置。
+自动发现所有已初始化的 Stable、Preview、Canary 和 Unpackaged 通道；不存在 `settings.json` 的通道被跳过，不创建伪配置。Portable 通道的 `settings.json` 与可执行文件同目录，无法从 `LOCALAPPDATA` 定位，因此不参与自动安装。
 
 ## 7. 并行任务
 
@@ -151,6 +151,7 @@ struct WindowIdentity {
 8. 写入前重读目标，preHash 不一致则中止。
 9. 同目录临时文件原子替换。
 10. 回读、解析、验证并写 committed manifest。
+11. 向 PowerShell Profile 追加受管的 `OSC 9;9` 提示符包装（快照、备份、CAS、幂等），用于让 `splitMode: duplicate` 继承当前目录；失败不阻塞 Terminal 桥接安装，由 `doctor` 单独报告。
 
 卸载阶段：
 

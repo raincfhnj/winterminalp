@@ -8,6 +8,7 @@
 mod discovery;
 mod jsonc;
 mod manifest;
+mod shell;
 mod transaction;
 mod types;
 
@@ -85,6 +86,7 @@ pub fn plan(config: &IntegrationConfig) -> AppResult<PlanReport> {
         can_install: !targets.is_empty() && !fragment_conflict && !target_conflict,
         fragment: fragment.report,
         targets: target_plans,
+        shell_integration: shell::plan(config),
         manifest_path: config.manifest_path(),
         issues,
     })
@@ -158,12 +160,16 @@ pub fn install(config: &IntegrationConfig) -> AppResult<InstallReport> {
             schema_version: INTEGRATION_SCHEMA_VERSION,
             fragment: installed_fragment_report,
             targets: target_reports,
+            shell_integration: Vec::new(),
             manifest_path: config.manifest_path(),
         })
     })();
 
     match operation {
-        Ok(report) => Ok(report),
+        Ok(mut report) => {
+            report.shell_integration = shell::install(config);
+            Ok(report)
+        }
         Err(install_error) => match rollback_install(&mut applied) {
             Ok(()) => Err(install_error),
             Err(rollback_error) => Err(AppError::SettingsConflict(format!(
@@ -177,11 +183,16 @@ pub fn install(config: &IntegrationConfig) -> AppResult<InstallReport> {
 /// Removes only definitions that still semantically match the installation manifest.
 pub fn uninstall(config: &IntegrationConfig) -> AppResult<UninstallReport> {
     let loaded = load_manifest(&config.manifest_path())?;
+    // Shell cleanup is independent of the Terminal manifest, but it runs only
+    // after the manifest loads so a corrupt manifest cannot leave a half-undone
+    // uninstall that reported failure.
+    let shell_integration = shell::uninstall(config);
     if loaded.sha256.is_none() {
         return Ok(UninstallReport {
             schema_version: INTEGRATION_SCHEMA_VERSION,
             fragment_status: ChangeStatus::Missing,
             targets: Vec::new(),
+            shell_integration,
             manifest_path: config.manifest_path(),
             manifest_retained: false,
         });
@@ -214,6 +225,7 @@ pub fn uninstall(config: &IntegrationConfig) -> AppResult<UninstallReport> {
         schema_version: INTEGRATION_SCHEMA_VERSION,
         fragment_status,
         targets: target_reports,
+        shell_integration,
         manifest_path: config.manifest_path(),
         manifest_retained,
     })
@@ -346,6 +358,7 @@ pub fn doctor(config: &IntegrationConfig) -> AppResult<DoctorReport> {
         healthy: manifest_valid && issues.is_empty(),
         fragment: fragment.report,
         targets: target_reports,
+        shell_integration: shell::plan(config),
         manifest_path: config.manifest_path(),
         manifest_valid,
         issues,
@@ -833,13 +846,6 @@ fn validated_targets(config: &IntegrationConfig) -> AppResult<Vec<TerminalSettin
                 target.settings_path.display()
             )));
         }
-        if matches!(config.target_mode, TargetMode::Explicit(_)) && !target.settings_path.is_file()
-        {
-            return Err(AppError::Settings {
-                path: target.settings_path.clone(),
-                message: "explicit settings target has not been initialized".to_owned(),
-            });
-        }
     }
     Ok(targets)
 }
@@ -891,16 +897,20 @@ mod tests {
 
     use super::*;
 
-    fn stable_settings(root: &Path, source: &[u8]) -> std::path::PathBuf {
+    fn channel_settings(root: &Path, package: &str, source: &[u8]) -> std::path::PathBuf {
         let path = root
             .join("Packages")
-            .join("Microsoft.WindowsTerminal_8wekyb3d8bbwe")
+            .join(package)
             .join("LocalState")
             .join("settings.json");
         fs::create_dir_all(path.parent().expect("fixture should have a parent"))
             .expect("fixture directory should be created");
         fs::write(&path, source).expect("fixture should be written");
         path
+    }
+
+    fn stable_settings(root: &Path, source: &[u8]) -> std::path::PathBuf {
+        channel_settings(root, "Microsoft.WindowsTerminal_8wekyb3d8bbwe", source)
     }
 
     #[test]
@@ -924,7 +934,11 @@ mod tests {
     fn doctor_is_not_healthy_before_the_fragment_is_installed() {
         let temp = tempfile::tempdir().expect("temporary directory should be created");
         stable_settings(temp.path(), b"{}\n");
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"));
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
 
         let report = doctor(&config).expect("doctor should be read-only and successful");
 
@@ -940,7 +954,11 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary directory should be created");
         let original = b"{\r\n  // user settings\r\n  \"profiles\": { \"list\": [] },\r\n}\r\n";
         let settings_path = stable_settings(temp.path(), original);
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"));
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
 
         let first = install(&config).expect("first install should succeed");
         assert_eq!(first.targets.len(), 1);
@@ -973,7 +991,11 @@ mod tests {
     fn uninstall_preserves_a_user_modified_managed_entry() {
         let temp = tempfile::tempdir().expect("temporary directory should be created");
         let settings_path = stable_settings(temp.path(), b"{\n  \"keybindings\": []\n}\n");
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"));
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
         install(&config).expect("install should succeed");
 
         let source = fs::read_to_string(&settings_path).expect("settings should be readable");
@@ -1003,7 +1025,11 @@ mod tests {
     fn plan_blocks_an_unmanaged_fragment_without_writing_settings() {
         let temp = tempfile::tempdir().expect("temporary directory should be created");
         let settings_path = stable_settings(temp.path(), b"{}\n");
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"));
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
         fs::create_dir_all(
             config
                 .fragment_path()
@@ -1029,23 +1055,23 @@ mod tests {
     #[test]
     fn second_target_cas_failure_rolls_back_first_target_and_fragment() {
         let temp = tempfile::tempdir().expect("temporary directory should be created");
-        let first_path = temp.path().join("stable-settings.json");
-        let second_path = temp.path().join("preview-settings.json");
         let first_original = b"{\r\n  // stable user bytes\r\n}\r\n";
         let second_original = b"{\n  // preview user bytes\n}\n";
-        fs::write(&first_path, first_original).expect("first fixture should be written");
-        fs::write(&second_path, second_original).expect("second fixture should be written");
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"))
-            .with_target_mode(TargetMode::Explicit(vec![
-                TerminalSettingsTarget {
-                    channel: TerminalChannel::Stable,
-                    settings_path: first_path.clone(),
-                },
-                TerminalSettingsTarget {
-                    channel: TerminalChannel::Preview,
-                    settings_path: second_path.clone(),
-                },
-            ]));
+        let first_path = channel_settings(
+            temp.path(),
+            "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+            first_original,
+        );
+        let second_path = channel_settings(
+            temp.path(),
+            "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe",
+            second_original,
+        );
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
 
         let hook_calls = Rc::new(Cell::new(0));
         let hook_calls_for_callback = Rc::clone(&hook_calls);

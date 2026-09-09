@@ -10,10 +10,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN,
-    LLKHF_EXTENDED, LLKHF_INJECTED, LLKHF_LOWER_IL_INJECTED, LLMHF_INJECTED,
-    LLMHF_LOWER_IL_INJECTED, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    LLKHF_EXTENDED, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW,
+    PostThreadMessageW, SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL, WH_MOUSE_LL,
+    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
 use windows::core::Owned;
 
@@ -39,10 +39,7 @@ pub struct RawKeyEvent {
     pub is_extended: bool,
     pub is_alt_down: bool,
     pub injected: bool,
-    pub lower_integrity_injected: bool,
-    pub injected_by_controller: bool,
     pub timestamp_ms: u32,
-    pub extra_info: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,9 +55,7 @@ pub struct RawMouseEvent {
     pub y: i32,
     pub kind: MouseEventKind,
     pub injected: bool,
-    pub lower_integrity_injected: bool,
     pub timestamp_ms: u32,
-    pub extra_info: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,10 +434,7 @@ fn raw_key_event_from_hook(message: u32, data: &KBDLLHOOKSTRUCT) -> Option<RawKe
         is_extended: data.flags.contains(LLKHF_EXTENDED),
         is_alt_down: data.flags.contains(LLKHF_ALTDOWN),
         injected: data.flags.contains(LLKHF_INJECTED),
-        lower_integrity_injected: data.flags.contains(LLKHF_LOWER_IL_INJECTED),
-        injected_by_controller: data.dwExtraInfo == CONTROLLER_INPUT_MARKER,
         timestamp_ms: data.time,
-        extra_info: data.dwExtraInfo,
     })
 }
 
@@ -459,17 +451,13 @@ fn raw_mouse_event_from_hook(message: u32, data: &MSLLHOOKSTRUCT) -> Option<RawM
         y: data.pt.y,
         kind,
         injected: data.flags & LLMHF_INJECTED != 0,
-        lower_integrity_injected: data.flags & LLMHF_LOWER_IL_INJECTED != 0,
         timestamp_ms: data.time,
-        extra_info: data.dwExtraInfo,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        KBDLLHOOKSTRUCT_FLAGS, LLKHF_INJECTED, LLKHF_LOWER_IL_INJECTED,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{KBDLLHOOKSTRUCT_FLAGS, LLKHF_INJECTED};
 
     use super::*;
 
@@ -494,13 +482,13 @@ mod tests {
     }
 
     #[test]
-    fn marks_lower_integrity_controller_injection() {
+    fn marks_injected_system_key_release() {
         let event = raw_key_event_from_hook(
             WM_SYSKEYUP,
             &KBDLLHOOKSTRUCT {
                 vkCode: 0x7c,
                 scanCode: 0,
-                flags: LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED,
+                flags: LLKHF_INJECTED,
                 time: 456,
                 dwExtraInfo: CONTROLLER_INPUT_MARKER,
             },
@@ -509,8 +497,6 @@ mod tests {
 
         assert_eq!(event.transition, KeyTransition::Up);
         assert!(event.injected);
-        assert!(event.lower_integrity_injected);
-        assert!(event.injected_by_controller);
         assert!(event.is_system_key);
     }
 
@@ -529,7 +515,7 @@ mod tests {
             &MSLLHOOKSTRUCT {
                 pt: windows::Win32::Foundation::POINT { x: 320, y: 240 },
                 mouseData: 0,
-                flags: LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED,
+                flags: LLMHF_INJECTED,
                 time: 789,
                 dwExtraInfo: 123,
             },
@@ -539,8 +525,6 @@ mod tests {
         assert_eq!(event.kind, MouseEventKind::LeftDown);
         assert_eq!((event.x, event.y), (320, 240));
         assert!(event.injected);
-        assert!(event.lower_integrity_injected);
-        assert_eq!(event.extra_info, 123);
     }
 
     #[test]

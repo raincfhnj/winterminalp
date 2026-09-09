@@ -1,16 +1,18 @@
 use crate::TerminalChannel;
 
-use super::{IntegrationConfig, TargetMode, TerminalSettingsTarget};
+use super::{IntegrationConfig, TerminalSettingsTarget};
 
+/// Discovers every initialized Windows Terminal channel settings file.
+///
+/// Portable installs store `settings.json` next to the executable and cannot be
+/// located from `LOCALAPPDATA`; install them by running Windows Terminal from a
+/// packaged channel or configure the bridge manually.
 #[must_use]
 pub fn discover_targets(config: &IntegrationConfig) -> Vec<TerminalSettingsTarget> {
-    match &config.target_mode {
-        TargetMode::Explicit(targets) => targets.clone(),
-        TargetMode::Auto => auto_candidates(&config.local_app_data)
-            .into_iter()
-            .filter(|target| target.settings_path.is_file())
-            .collect(),
-    }
+    auto_candidates(&config.local_app_data)
+        .into_iter()
+        .filter(|target| target.settings_path.is_file())
+        .collect()
 }
 
 fn auto_candidates(local_app_data: &std::path::Path) -> [TerminalSettingsTarget; 4] {
@@ -66,7 +68,11 @@ mod tests {
             .expect("fixture directory should be created");
         fs::write(&stable, b"{}\n").expect("fixture should be written");
 
-        let config = IntegrationConfig::new(temp.path(), temp.path().join("state"));
+        let config = IntegrationConfig::new(
+            temp.path(),
+            temp.path().join("state"),
+            temp.path().join("documents"),
+        );
         let targets = discover_targets(&config);
 
         assert_eq!(targets.len(), 1);

@@ -16,6 +16,9 @@ target/
 # WinTerminal++ local controller state
 .winterminal-local/
 
+# Temporary diagnostic probes (not part of the shipped product)
+examples/*_probe.rs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

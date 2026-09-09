@@ -119,6 +119,6 @@ Windows Terminal 没有公开 pane tree 或 Action 执行回执 API，所以“�
 - UI Automation 实测在 Stable 1.24.11911.0 的独立 3 窗格窗口返回 3 个有效 `TermControl` 矩形，纯几何层推导出 3 段可命中分隔线；仓库探针 `native_pane_geometry_from_environment` 通过。
 - 独立根分栏实测一次 `resizePane` 移动 87 px（约父区域 5%）；同方向嵌套分栏实测移动 43 px（约局部父区域 5%），与 `PaneDrag` 的动态步长模型一致。
 - `combined_input_hooks_install_and_stop` 已确认键盘与鼠标低级 Hook 可在同一消息线程安装并干净卸载，未停止用户原有控制器。
-- `target\release\wter.exe config` 能从旧 schema 1 文件输出 schema 2 的完整有效配置，并补全 `[mouse_resize]` 默认值：`enabled = true`、`divider_hit_slop_px = 3`、`geometry_poll_interval_ms = 100`；读取前后磁盘文件 SHA-256 均为 `D95BBA9D3B1FD07F97BFF94C0C73C567F1B4A72600BEFA82D6AC974B40439F74`。
+- `target\release\wter.exe config` 能从旧 schema 1 文件输出 schema 2 的完整有效配置，并补全 `[mouse_resize]` 默认值：`enabled = true`、`divider_hit_slop_px = 8`、`geometry_poll_interval_ms = 100`；读取前后磁盘文件 SHA-256 均为 `D95BBA9D3B1FD07F97BFF94C0C73C567F1B4A72600BEFA82D6AC974B40439F74`。
 - `cargo fmt --all -- --check`、`cargo test`、严格 Clippy 和 Release 三二进制构建均通过；Rust 工具链为 1.97.1。
 - 物理鼠标事件不能由自动探针伪造：统一 Hook 按安全设计透传 `LLMHF_INJECTED`，最终可视拖动仍需人工在新 Release 控制器上确认。

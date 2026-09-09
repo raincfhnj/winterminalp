@@ -66,8 +66,8 @@ pub enum PlatformError {
     #[error("unexpected physical {0} modifier is held; refusing to alter user keyboard state")]
     UnexpectedModifierHeld(ModifierKey),
 
-    #[error("bridge function key F{0} is already physically held")]
-    FunctionKeyHeld(u8),
+    #[error("target key (virtual key {0:#x}) is already physically held")]
+    TargetKeyHeld(u16),
 
     #[error("no Windows Terminal pane contains screen point ({x}, {y}) in HWND {hwnd:#x}")]
     PaneNotFoundAt { hwnd: isize, x: i32, y: i32 },
@@ -94,9 +94,6 @@ pub enum PlatformError {
 
     #[error("invalid named mutex: {0}")]
     InvalidMutexName(String),
-
-    #[error("invalid Windows Terminal window name: {0}")]
-    InvalidWindowName(String),
 
     #[error("failed to launch wt.exe: {source}")]
     TerminalLaunch {

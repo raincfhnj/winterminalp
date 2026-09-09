@@ -6,16 +6,19 @@
 
 mod accessibility;
 mod cursor;
+mod dpi;
 mod elevation;
 mod error;
 mod foreground;
 mod hook;
 mod input;
+mod known_folder;
 mod launcher;
 mod single_instance;
 
 pub use accessibility::TerminalAccessibility;
 pub use cursor::show_pane_resize_cursor;
+pub use dpi::enable_per_monitor_dpi_awareness;
 pub use elevation::{is_current_process_elevated, relaunch_current_process_elevated};
 pub use error::{ModifierKey, PlatformError, PlatformResult};
 pub use foreground::{
@@ -25,6 +28,7 @@ pub use hook::{
     CONTROLLER_INPUT_MARKER, HookDecision, InputHook, KeyTransition, MouseEventKind, RawInputEvent,
     RawInputHandler, RawKeyEvent, RawMouseEvent,
 };
-pub use input::{InputDispatch, send_bridge_chord};
-pub use launcher::{TerminalLaunchTarget, launch_windows_terminal};
+pub use input::{InputDispatch, send_bridge_chord, send_literal_chord};
+pub use known_folder::documents_directory;
+pub use launcher::launch_windows_terminal;
 pub use single_instance::{DEFAULT_INSTANCE_MUTEX_NAME, SingleInstanceGuard};

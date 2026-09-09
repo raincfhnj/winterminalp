@@ -19,7 +19,7 @@ pub const DEFAULT_PREFIX_TIMEOUT_MS: u64 = 1_500;
 pub const DISABLED_SHORTCUT: &str = "disabled";
 const MIN_PREFIX_TIMEOUT_MS: u64 = 250;
 const MAX_PREFIX_TIMEOUT_MS: u64 = 5_000;
-const MAX_DIVIDER_HIT_SLOP_PX: u8 = 16;
+const MAX_DIVIDER_HIT_SLOP_PX: u8 = 32;
 const MIN_PANE_GEOMETRY_POLL_INTERVAL_MS: u64 = 50;
 const MAX_PANE_GEOMETRY_POLL_INTERVAL_MS: u64 = 1_000;
 
@@ -29,6 +29,9 @@ pub struct MouseResizeConfig {
     /// Enables native Windows Terminal divider dragging through UI Automation.
     pub enabled: bool,
     /// Extra clickable pixels on either side of the visible native divider.
+    ///
+    /// 8px matches the grab tolerance users expect from native window borders
+    /// while staying below the smallest pane's half-width.
     pub divider_hit_slop_px: u8,
     /// Refresh cadence for the disposable native pane geometry snapshot.
     pub geometry_poll_interval_ms: u64,
@@ -38,7 +41,7 @@ impl Default for MouseResizeConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            divider_hit_slop_px: 3,
+            divider_hit_slop_px: 8,
             geometry_poll_interval_ms: 100,
         }
     }
@@ -138,7 +141,7 @@ impl ControllerConfig {
     }
 
     pub fn validate(&self) -> AppResult<()> {
-        self.validate_scalar_fields()?;
+        // `prefix_config` validates the scalar fields before compiling chords.
         let _ = self.prefix_config()?;
         Ok(())
     }
@@ -529,7 +532,7 @@ new_tab = "t"
         assert!(rendered.contains("new_tab = \"c\""));
         assert!(rendered.contains("shutdown = \"q\""));
         assert!(rendered.contains("[mouse_resize]"));
-        assert!(rendered.contains("divider_hit_slop_px = 3"));
+        assert!(rendered.contains("divider_hit_slop_px = 8"));
 
         let reparsed: ControllerConfig =
             toml::from_str(&rendered).expect("rendered configuration should parse again");

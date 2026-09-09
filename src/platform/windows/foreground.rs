@@ -14,8 +14,8 @@ use crate::model::{TerminalChannel, WindowIdentity};
 
 use super::error::{PlatformError, PlatformResult};
 
+const INITIAL_PROCESS_PATH_CHARS: usize = 512;
 const MAX_PROCESS_PATH_CHARS: usize = 32_768;
-const MAX_PROCESS_PATH_CHARS_U32: u32 = 32_768;
 
 /// Returns the foreground window when it belongs to a Windows Terminal host.
 ///
@@ -98,23 +98,34 @@ fn open_process_for_identity(process_id: u32) -> PlatformResult<Owned<HANDLE>> {
 }
 
 fn process_image_path(process: HANDLE) -> PlatformResult<PathBuf> {
-    let mut buffer = vec![0_u16; MAX_PROCESS_PATH_CHARS];
-    let mut length = MAX_PROCESS_PATH_CHARS_U32;
+    // Almost every image path fits in the first buffer; only fall back to the
+    // documented maximum when Windows reports that it was too small.
+    for capacity in [INITIAL_PROCESS_PATH_CHARS, MAX_PROCESS_PATH_CHARS] {
+        let mut buffer = vec![0_u16; capacity];
+        let mut length = u32::try_from(capacity).expect("path capacity fits in u32");
 
-    // SAFETY: `buffer` is writable for MAX_PROCESS_PATH_CHARS UTF-16 units,
-    // `length` describes that capacity, and `process` is valid while borrowed.
-    unsafe {
-        QueryFullProcessImageNameW(
-            process,
-            PROCESS_NAME_WIN32,
-            PWSTR(buffer.as_mut_ptr()),
-            &mut length,
-        )
+        // SAFETY: `buffer` is writable for `capacity` UTF-16 units, `length`
+        // describes that capacity, and `process` is valid while borrowed.
+        let result = unsafe {
+            QueryFullProcessImageNameW(
+                process,
+                PROCESS_NAME_WIN32,
+                PWSTR(buffer.as_mut_ptr()),
+                &mut length,
+            )
+        };
+        match result {
+            Ok(()) => {
+                buffer.truncate(length as usize);
+                return Ok(PathBuf::from(OsString::from_wide(&buffer)));
+            }
+            Err(_) if capacity == INITIAL_PROCESS_PATH_CHARS => continue,
+            Err(source) => {
+                return Err(PlatformError::win32("QueryFullProcessImageNameW", source));
+            }
+        }
     }
-    .map_err(|source| PlatformError::win32("QueryFullProcessImageNameW", source))?;
-
-    buffer.truncate(length as usize);
-    Ok(PathBuf::from(OsString::from_wide(&buffer)))
+    unreachable!("the final loop iteration returns on success or failure")
 }
 
 fn process_creation_time(process: HANDLE) -> PlatformResult<u64> {

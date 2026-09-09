@@ -90,14 +90,14 @@ impl PaneDivider {
             SplitAxis::Vertical => {
                 point.x >= self.hit_band_start - hit_slop_pixels
                     && point.x <= self.hit_band_end + hit_slop_pixels
-                    && point.y >= self.span_start
-                    && point.y < self.span_end
+                    && point.y >= self.span_start - hit_slop_pixels
+                    && point.y < self.span_end + hit_slop_pixels
             }
             SplitAxis::Horizontal => {
                 point.y >= self.hit_band_start - hit_slop_pixels
                     && point.y <= self.hit_band_end + hit_slop_pixels
-                    && point.x >= self.span_start
-                    && point.x < self.span_end
+                    && point.x >= self.span_start - hit_slop_pixels
+                    && point.x < self.span_end + hit_slop_pixels
             }
         }
     }
@@ -343,7 +343,18 @@ mod tests {
         assert!(layout.divider_at(ScreenPoint::new(494, 500), 3).is_some());
         assert!(layout.divider_at(ScreenPoint::new(506, 500), 3).is_some());
         assert!(layout.divider_at(ScreenPoint::new(493, 500), 3).is_none());
-        assert!(layout.divider_at(ScreenPoint::new(500, 99), 3).is_none());
+        assert!(layout.divider_at(ScreenPoint::new(500, 98), 3).is_some());
+        assert!(layout.divider_at(ScreenPoint::new(500, 96), 3).is_none());
+    }
+
+    #[test]
+    fn horizontal_divider_hit_target_extends_along_its_span() {
+        let layout =
+            PaneLayout::from_panes(vec![pane(100, 100, 900, 497), pane(100, 503, 900, 900)]);
+
+        assert!(layout.divider_at(ScreenPoint::new(500, 500), 3).is_some());
+        assert!(layout.divider_at(ScreenPoint::new(98, 500), 3).is_some());
+        assert!(layout.divider_at(ScreenPoint::new(96, 500), 3).is_none());
     }
 
     #[test]

@@ -14,7 +14,7 @@
 | `X` | 关闭活动窗格 |
 | `Z` | 放大或恢复活动窗格 |
 | `,` | 打开标签页重命名框 |
-| `B` | 向 Shell 发送原始 Ctrl+B |
+| `B` | 向 Shell 发送原始 Prefix（默认 Ctrl+B；自定义 Prefix 时发送对应组合） |
 | `Q` | 退出 WinTerminal++ 控制器，不关闭 Terminal |
 | `Escape` | 取消 Prefix |
 
@@ -27,7 +27,7 @@
 ```toml
 [mouse_resize]
 enabled = true
-divider_hit_slop_px = 3
+divider_hit_slop_px = 8
 geometry_poll_interval_ms = 100
 ```
 
@@ -96,8 +96,9 @@ wter
 - Prefix 默认 1500 ms 后超时。
 - 未绑定的第二键会被吞掉并取消 Prefix。
 - Prefix 后仍按住 Ctrl 再按方向键，执行 resize；若要移动焦点，请先释放 Ctrl。
+- `send_prefix_literal`（默认第二键 `B`）由控制器直接注入当前配置的 Prefix 组合，自定义 Prefix 后仍然有效，无需重新安装桥接。
 - `closePane` 沿用 Windows Terminal 原生语义：没有分屏时会关闭标签页，最后一个标签页时会关闭窗口。
-- 当前目录继承取决于 Shell Integration。
+- 分屏与新建标签页的当前目录继承由 Windows Terminal 的 Shell Integration 提供。`wter install` 会向 `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`（以及存在时的 `Documents\PowerShell\...`）追加一段受管提示符包装，使提示符输出 `OSC 9;9` 工作目录；`wter uninstall` 只移除未被修改的受管块。修改后需重新打开 PowerShell 标签页（或在会话中重新加载 Profile）才能生效。
 - `wter run`、`wter launch` 和 `winterminald.exe` 会在未提权时通过 UAC 自重启；控制器核心拒绝以普通权限安装 Hook 或向 Terminal 派发动作。
 - 鼠标左键在分隔线以外完全透传；点击或开始拖动会取消尚未完成的 Prefix，避免下一键误触发动作。
 

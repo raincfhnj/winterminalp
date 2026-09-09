@@ -1,6 +1,10 @@
 //! Short command-name entry point for WinTerminal++.
 //!
-//! Keep the long `winterminal.exe` binary as a compatibility alias while both
-//! entry points share the exact same CLI implementation.
+//! Shares the exact CLI implementation with `winterminal.exe`; only the
+//! displayed binary name differs.
 
-include!("winterminal.rs");
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    winterminal::cli::run(env!("CARGO_BIN_NAME"))
+}

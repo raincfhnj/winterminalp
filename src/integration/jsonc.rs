@@ -44,22 +44,33 @@ struct ParsedDocument {
 #[derive(Debug, Clone)]
 struct ExistingKeybinding {
     node: CstNode,
-    canonical_id: String,
+    canonical_id: Option<String>,
     canonical_chord: String,
     has_only_id_and_keys: bool,
 }
 
 pub(crate) fn desired_keybinding(definition: Value) -> AppResult<DesiredKeybinding> {
-    let (canonical_id, canonical_chord, has_only_id_and_keys) =
+    let (canonical_id, canonical_chords, has_only_id_and_keys) =
         parse_binding_definition(&definition).map_err(AppError::InvalidConfiguration)?;
+    let Some(canonical_id) = canonical_id else {
+        return Err(AppError::InvalidConfiguration(
+            "managed keybinding definitions must include an id".to_owned(),
+        ));
+    };
     if !has_only_id_and_keys {
         return Err(AppError::InvalidConfiguration(
-            "managed keybinding definitions may contain only id and keys".to_owned(),
+            "managed keybinding definitions may contain only id and a single string keys value"
+                .to_owned(),
         ));
     }
+    let [canonical_chord] = canonical_chords.as_slice() else {
+        return Err(AppError::InvalidConfiguration(
+            "managed keybinding definitions must contain exactly one chord".to_owned(),
+        ));
+    };
     Ok(DesiredKeybinding {
         canonical_id,
-        canonical_chord,
+        canonical_chord: canonical_chord.clone(),
         definition,
     })
 }
@@ -146,14 +157,16 @@ pub(crate) fn merge_keybindings(
     for managed in desired {
         let same_id: Vec<_> = existing
             .iter()
-            .filter(|binding| binding.canonical_id == managed.canonical_id)
+            .filter(|binding| {
+                binding.canonical_id.as_deref() == Some(managed.canonical_id.as_str())
+            })
             .collect();
         let same_chord: Vec<_> = existing
             .iter()
             .filter(|binding| binding.canonical_chord == managed.canonical_chord)
             .collect();
         let equivalent = existing.iter().any(|binding| {
-            binding.canonical_id == managed.canonical_id
+            binding.canonical_id.as_deref() == Some(managed.canonical_id.as_str())
                 && binding.canonical_chord == managed.canonical_chord
                 && binding.has_only_id_and_keys
         });
@@ -174,7 +187,10 @@ pub(crate) fn merge_keybindings(
             continue;
         }
         if !same_chord.is_empty() {
-            let occupant = &same_chord[0].canonical_id;
+            let occupant = same_chord[0]
+                .canonical_id
+                .as_deref()
+                .unwrap_or("an unmanaged keybinding");
             conflicts.push(conflict(
                 ConflictKind::SameChordDifferentBinding,
                 Some(managed.canonical_id.clone()),
@@ -250,7 +266,7 @@ pub(crate) fn remove_managed_keybindings(
         let expected = desired_keybinding(record.definition.clone())?;
         let exact = existing.iter().enumerate().find(|(index, binding)| {
             !consumed.contains(index)
-                && binding.canonical_id == expected.canonical_id
+                && binding.canonical_id.as_deref() == Some(expected.canonical_id.as_str())
                 && binding.canonical_chord == expected.canonical_chord
                 && binding.has_only_id_and_keys
         });
@@ -261,7 +277,7 @@ pub(crate) fn remove_managed_keybindings(
         }
 
         let was_modified = existing.iter().any(|binding| {
-            binding.canonical_id == record.canonical_id
+            binding.canonical_id.as_deref() == Some(record.canonical_id.as_str())
                 || binding.canonical_chord == record.canonical_chord
         });
         if was_modified {
@@ -331,13 +347,15 @@ fn parse_existing_bindings(
             continue;
         };
         match parse_binding_definition(&value) {
-            Ok((canonical_id, canonical_chord, has_only_id_and_keys)) => {
-                parsed.push(ExistingKeybinding {
-                    node,
-                    canonical_id,
-                    canonical_chord,
-                    has_only_id_and_keys,
-                });
+            Ok((canonical_id, canonical_chords, has_only_id_and_keys)) => {
+                for canonical_chord in canonical_chords {
+                    parsed.push(ExistingKeybinding {
+                        node: node.clone(),
+                        canonical_id: canonical_id.clone(),
+                        canonical_chord,
+                        has_only_id_and_keys,
+                    });
+                }
             }
             Err(message) => conflicts.push(conflict(
                 ConflictKind::MalformedKeybinding,
@@ -350,32 +368,43 @@ fn parse_existing_bindings(
     (parsed, conflicts)
 }
 
-fn parse_binding_definition(value: &Value) -> Result<(String, String, bool), String> {
+/// Parses one root `keybindings` entry.
+///
+/// Returns the optional managed `id`, every chord declared by `keys` (a string
+/// or an array of strings), and whether the entry is a bare `{id, keys}` object
+/// with a single string chord that WinTerminal++ is allowed to own or remove.
+fn parse_binding_definition(value: &Value) -> Result<(Option<String>, Vec<String>, bool), String> {
     let object = value
         .as_object()
         .ok_or_else(|| "each root keybindings entry must be an object".to_owned())?;
-    let id = object
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "each root keybindings entry must have a string id".to_owned())?;
-    let canonical_id = normalize_id(id)?;
-    let keys = object
-        .get("keys")
-        .ok_or_else(|| format!("keybinding {id} is missing keys"))?;
-    let canonical_chord = match keys {
-        Value::String(keys) => normalize_chord(keys)?,
-        Value::Array(keys) if keys.len() == 1 => keys[0]
-            .as_str()
-            .ok_or_else(|| format!("keybinding {id} has a non-string keys value"))
-            .and_then(normalize_chord)?,
-        Value::Array(_) => {
-            return Err(format!(
-                "keybinding {id} must contain exactly one chord per managed action"
-            ));
-        }
-        _ => return Err(format!("keybinding {id} has an invalid keys value")),
+    let canonical_id = match object.get("id") {
+        Some(Value::String(id)) => Some(normalize_id(id)?),
+        Some(_) => return Err("keybinding id must be a string".to_owned()),
+        None => None,
     };
-    Ok((canonical_id, canonical_chord, object.len() == 2))
+    let keys = object.get("keys").ok_or_else(|| match &canonical_id {
+        Some(id) => format!("keybinding {id} is missing keys"),
+        None => "keybinding entry is missing keys".to_owned(),
+    })?;
+    let (canonical_chords, keys_is_string) = match keys {
+        Value::String(keys) => (vec![normalize_chord(keys)?], true),
+        Value::Array(keys) => {
+            let mut chords = Vec::with_capacity(keys.len());
+            for entry in keys {
+                let chord = entry
+                    .as_str()
+                    .ok_or_else(|| "keybinding keys array must contain only strings".to_owned())?;
+                chords.push(normalize_chord(chord)?);
+            }
+            if chords.is_empty() {
+                return Err("keybinding keys array cannot be empty".to_owned());
+            }
+            (chords, false)
+        }
+        _ => return Err("keybinding has an invalid keys value".to_owned()),
+    };
+    let has_only_id_and_keys = canonical_id.is_some() && object.len() == 2 && keys_is_string;
+    Ok((canonical_id, canonical_chords, has_only_id_and_keys))
 }
 
 fn normalize_id(id: &str) -> Result<String, String> {
@@ -564,5 +593,42 @@ mod tests {
         assert!(!text.contains("SplitLeft"));
         assert!(text.contains("SplitRight"));
         assert!(text.contains("User.Action"));
+    }
+
+    #[test]
+    fn command_keybindings_without_id_are_not_malformed() {
+        let source = br#"{"keybindings":[{"command":"newTab","keys":"ctrl+shift+t"}]}"#;
+        let result = merge_keybindings(
+            source,
+            &[desired("WinTerminalPP.SplitLeft", "ctrl+alt+shift+f13")],
+        )
+        .expect("analysis should complete");
+
+        assert!(result.conflicts.is_empty());
+        assert!(result.replacement.is_some());
+    }
+
+    #[test]
+    fn multi_chord_entries_are_not_malformed_but_still_reserve_their_chords() {
+        let source =
+            br#"{"keybindings":[{"id":"User.Multi","keys":["ctrl+alt+shift+f13","ctrl+x"]}]}"#;
+        let result = merge_keybindings(
+            source,
+            &[desired("WinTerminalPP.SplitLeft", "ctrl+alt+shift+f13")],
+        )
+        .expect("analysis should complete");
+
+        assert!(
+            result
+                .conflicts
+                .iter()
+                .any(|conflict| conflict.kind == ConflictKind::SameChordDifferentBinding)
+        );
+        assert!(
+            !result
+                .conflicts
+                .iter()
+                .any(|conflict| conflict.kind == ConflictKind::MalformedKeybinding)
+        );
     }
 }

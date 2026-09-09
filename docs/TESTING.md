@@ -75,7 +75,7 @@ Fixture 至少覆盖：
 - Stable/Preview/Canary 路径识别。
 - HWND、PID 或启动标记变化时拒绝派发。
 - SendInput 插入数量不足返回错误。
-- 自身 extra-info 标记可被 Hook 识别并透传。
+- 自身注入的键盘/鼠标事件凭系统注入标志一律透传（不再依赖 extra-info 标记）。
 - 单实例 mutex 第二次获取返回 already-running。
 - Hook guard drop 时卸载 Hook。
 - 键盘与鼠标 Hook 在同一线程安装、停止，panic 后统一 fail-open。

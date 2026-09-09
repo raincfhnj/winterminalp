@@ -59,6 +59,7 @@ WinTerminal++ 是 Windows Terminal 的无界面输入增强层，不是终端模
 - Desktop Observer 提供前台 Terminal 身份，并按独立低频周期读取原生窗格矩形；COM/UI Automation 不进入 Hook 回调。
 - 分隔线命中、拖动残差和 5% 原生步长换算位于纯 Rust `pane_layout`，不依赖 Win32。
 - `controller/pointer` 只决定是否捕获、何时取消以及一个拖拽批次的净 resize 意图；普通悬停和从 Explorer 开始的外部拖放永远透传。
+- 控制器以 per-monitor DPI 感知启动，使低级鼠标 Hook 的物理像素坐标与 UI Automation 返回的矩形处于同一坐标系；几何枚举在 provider 侧按 `TermControl` 类名过滤，单个失效元素不会丢弃整份快照。
 - Action worker 串行派发，避免多个合成 chord 交错；一个拖拽批次只做一次 UIA 聚焦，再发送对应数量的原生 resize chord，避免把同次移动拆成多个昂贵任务。
 - 队列固定容量；队列满时动作失败但键盘系统不被阻塞。
 - Hook 使用 RAII 在消息循环退出时调用 `UnhookWindowsHookEx`。
@@ -90,7 +91,7 @@ Bridge 分两层：
 1. `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WinTerminalPP\actions.json` 提供命名 Action。
 2. 每个 Terminal 通道的用户 `settings.json` 只绑定产品隐藏 chord 到这些 Action ID。
 
-桥接表使用 F13、F14、F15、F18–F24 的三组修饰键组合。F16/F17 已在 Stable 1.24 真实输入链路中判定为不可靠并由单元测试禁止重新进入托管表。
+桥接表使用 F13、F14、F15、F18–F24 的三组修饰键组合。F16/F17 已在 Stable 1.24 真实输入链路中判定为不可靠并由单元测试禁止重新进入托管表。`send_prefix_literal` 是唯一例外：控制器按当前配置的 Prefix 直接注入对应 chord，不经过静态桥接，因此自定义 Prefix 无需重新安装桥接。
 
 官方自 1.21 起允许 fragment 提供 Action，但明确禁止 fragment 注入 keys；这是防止第三方静默劫持快捷键的安全边界。[Action fragment implementation](https://github.com/microsoft/terminal/pull/16185)
 
@@ -128,7 +129,7 @@ shutdown = "q"
 
 [mouse_resize]
 enabled = true
-divider_hit_slop_px = 3
+divider_hit_slop_px = 8
 geometry_poll_interval_ms = 100
 
 ```
@@ -151,13 +152,17 @@ Terminal settings 是 JSONC，允许注释和尾逗号。Integration 使用 CST 
 
 运行期失败会通过内存逆操作栈恢复已完成的写入；每一步回滚前再次做 CAS，因此不会覆盖并发用户修改。当前版本没有跨进程持久化 prepared journal，强杀或断电后的恢复依赖原字节备份和 `doctor` 诊断。
 
+### PowerShell Shell Integration
+
+Windows Terminal 只有在 Shell 通过 `OSC 9;9` 报告 CWD 时，才会让 `splitMode: duplicate` 的窗格继承当前目录（WT 的 `_MakeTerminalPane` 读取活动控件的 `WorkingDirectory`）。因此 `wter install` 会向 `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1` 和存在时的 `Documents\PowerShell\Microsoft.PowerShell_profile.ps1` 追加一段带 `# >>> WinTerminalPP shell integration >>>` / `# <<< ... >>>` 标记的提示符包装：它保存原 `prompt`，先输出 `OSC 9;9`，再调用原提示符。安装使用与 Terminal 配置相同的快照、备份和 CAS 写入；重复安装幂等，卸载只移除内容未被用户修改的受管块，用户改动会被保留并报告。写入保持原 Profile 编码（UTF-8 / UTF-16LE），无法识别的编码只报告为冲突、不修改文件。该步骤不参与 `bridge_is_ready` 判定，任何 Profile 失败都只体现在报告里，不影响控制器启动，只会失去目录继承。
+
 ## 8. 安全边界
 
 - Hook 只判断有限快捷键和原生分隔线附近的左键拖动，不记录字符流或鼠标轨迹。
 - 非 Terminal 前台全部透传。
-- 非分隔线区域的鼠标输入全部透传；拖动期间只消费成对的左键 down/move/up。
+- 非分隔线区域的鼠标输入全部透传；拖动期间消费左键 down/up、透传 move。move 必须透传，因为消费低级鼠标移动会冻结硬件光标，使 `pt` 不再累积，拖动残差无法推进；down 已被消费，目标窗口不会因此进入文本选择。
 - 控制器不注册或替换 Windows Terminal 的 OLE `IDropTarget`。从 Explorer 开始的文件/目录拖放不会被控制器截获，仍由 Windows Terminal 或目标 Shell 按其原生规则处理。
-- injected 输入不能激活 Prefix，自身注入带固定 extra-info 标记以防递归。
+- injected 输入不能激活 Prefix；递归防护依据系统注入标志 `LLKHF_INJECTED`，自身注入仍附带固定 extra-info 标记，但 Hook 不再读取该标记。
 - Action ID 和 fragment 目录均使用产品命名空间。
 - 用户冲突默认阻断，不自动抢占。
 - 控制器运行入口会先检测访问令牌；未提权时通过 UAC 以相同命令自重启，只有提权实例可安装 Hook、UI Automation 与输入桥接。因此管理员启动的 Windows Terminal 可使用全部 Prefix 与鼠标 resize 功能。`SendInput` 仍只向相同或更低完整性目标注入。[SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)
@@ -187,5 +192,5 @@ Terminal settings 是 JSONC，允许注释和尾逗号。Integration 使用 CST 
 - UI Automation 只暴露可见 `TermControl` 的屏幕矩形，不暴露真实 pane tree；因此拖动以可见相邻矩形推导分隔线，并使用 Terminal 原生约 5% 父区域步长，而不是像素级重排。
 - SendInput 在重验目标和实际输入之间存在不可完全消除的微小竞争窗口。
 - 控制器只能提供 tmux 风格操作，不提供 tmux 的后台 session server。
-- 当前目录复制能力取决于 Windows Terminal 与 Shell Integration。
+- 当前目录复制由 Windows Terminal 的 `duplicate` 语义加 Shell Integration 提供；WinTerminal++ 只负责安装受管的 `OSC 9;9` 提示符包装，Shell 不加载 Profile 时仍回退到 Windows Terminal 默认目录。
 - Windows Terminal 不公开 Action 执行回执或 pane tree 查询；`SendInput` 成功只证明事件已插入，不能单独证明布局已改变。

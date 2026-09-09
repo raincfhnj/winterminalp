@@ -2,8 +2,10 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomation2, IUIAutomationElement, TreeScope_Descendants,
+    UIA_ClassNamePropertyId,
 };
 use windows::core::Interface;
 
@@ -54,24 +56,51 @@ impl TerminalAccessibility {
 
     pub fn pane_geometries(&self, hwnd: isize) -> PlatformResult<Vec<PaneGeometry>> {
         let elements = self.terminal_elements(hwnd)?;
-        let mut panes = Vec::with_capacity(elements.len());
+        let element_count = elements.len();
+        let mut panes = Vec::with_capacity(element_count);
+        let mut first_error = None;
         for element in elements {
+            // A single stale element must not discard the whole snapshot; the
+            // caller rebuilds the layout on the next poll anyway.
             // SAFETY: `element` is a live UI Automation proxy used on the COM
             // apartment where it was obtained.
-            let bounds = unsafe { element.CurrentBoundingRectangle() }.map_err(|source| {
-                PlatformError::win32("IUIAutomationElement::CurrentBoundingRectangle", source)
-            })?;
-            let has_keyboard_focus = unsafe { element.CurrentHasKeyboardFocus() }
-                .map_err(|source| {
-                    PlatformError::win32("IUIAutomationElement::CurrentHasKeyboardFocus", source)
-                })?
-                .as_bool();
+            let bounds = match unsafe { element.CurrentBoundingRectangle() } {
+                Ok(bounds) => bounds,
+                Err(source) => {
+                    first_error.get_or_insert_with(|| {
+                        PlatformError::win32(
+                            "IUIAutomationElement::CurrentBoundingRectangle",
+                            source,
+                        )
+                    });
+                    continue;
+                }
+            };
+            let has_keyboard_focus = match unsafe { element.CurrentHasKeyboardFocus() } {
+                Ok(value) => value,
+                Err(source) => {
+                    first_error.get_or_insert_with(|| {
+                        PlatformError::win32(
+                            "IUIAutomationElement::CurrentHasKeyboardFocus",
+                            source,
+                        )
+                    });
+                    continue;
+                }
+            };
             let bounds = ScreenRect::new(bounds.left, bounds.top, bounds.right, bounds.bottom);
             if bounds.is_valid() {
                 panes.push(PaneGeometry {
                     bounds,
-                    has_keyboard_focus,
+                    has_keyboard_focus: has_keyboard_focus.as_bool(),
                 });
+            }
+        }
+        // Only surface a failure when every enumerated control was unusable;
+        // otherwise a transient stale element would discard a valid snapshot.
+        if panes.is_empty() && element_count > 0 {
+            if let Some(error) = first_error {
+                return Err(error);
             }
         }
         Ok(panes)
@@ -114,24 +143,29 @@ impl TerminalAccessibility {
         // by UI Automation; invalid or stale handles become a structured error.
         let root = unsafe { self.automation.ElementFromHandle(isize_to_hwnd(hwnd)) }
             .map_err(|source| PlatformError::win32("IUIAutomation::ElementFromHandle", source))?;
-        // SAFETY: the condition belongs to this automation client.
-        let condition = unsafe { self.automation.CreateTrueCondition() }
-            .map_err(|source| PlatformError::win32("IUIAutomation::CreateTrueCondition", source))?;
+        // Filtering by class name in the provider avoids marshaling every
+        // descendant across the process boundary just to discard it.
+        // SAFETY: the property id and string value are valid for this client,
+        // and the temporary VARIANT is copied into the condition before it is
+        // cleared by its `Drop` implementation.
+        let condition = unsafe {
+            self.automation.CreatePropertyCondition(
+                UIA_ClassNamePropertyId,
+                &VARIANT::from(TERMINAL_CONTROL_CLASS_NAME),
+            )
+        }
+        .map_err(|source| PlatformError::win32("IUIAutomation::CreatePropertyCondition", source))?;
         // SAFETY: `root` and `condition` are live proxies on this apartment;
         // descendants are read-only accessibility elements.
         let descendants = unsafe { root.FindAll(TreeScope_Descendants, &condition) }
             .map_err(|source| PlatformError::win32("IUIAutomationElement::FindAll", source))?;
         let length = unsafe { descendants.Length() }
             .map_err(|source| PlatformError::win32("IUIAutomationElementArray::Length", source))?;
-        let mut elements = Vec::new();
+        let mut elements = Vec::with_capacity(length as usize);
         for index in 0..length {
-            let element = unsafe { descendants.GetElement(index) }.map_err(|source| {
-                PlatformError::win32("IUIAutomationElementArray::GetElement", source)
-            })?;
-            let class_name = unsafe { element.CurrentClassName() }.map_err(|source| {
-                PlatformError::win32("IUIAutomationElement::CurrentClassName", source)
-            })?;
-            if class_name == TERMINAL_CONTROL_CLASS_NAME {
+            // A single transiently unavailable element must not fail the whole
+            // enumeration; callers skip the missing pane.
+            if let Ok(element) = unsafe { descendants.GetElement(index) } {
                 elements.push(element);
             }
         }

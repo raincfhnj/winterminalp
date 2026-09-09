@@ -11,16 +11,21 @@ pub const MINIMUM_FRAGMENT_VERSION: &str = "1.21";
 pub struct IntegrationConfig {
     pub local_app_data: PathBuf,
     pub state_dir: PathBuf,
-    pub target_mode: TargetMode,
+    /// Known-folder `Documents` root that hosts the PowerShell profile folders.
+    pub documents_dir: PathBuf,
 }
 
 impl IntegrationConfig {
     #[must_use]
-    pub fn new(local_app_data: impl Into<PathBuf>, state_dir: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        local_app_data: impl Into<PathBuf>,
+        state_dir: impl Into<PathBuf>,
+        documents_dir: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             local_app_data: local_app_data.into(),
             state_dir: state_dir.into(),
-            target_mode: TargetMode::Auto,
+            documents_dir: documents_dir.into(),
         }
     }
 
@@ -34,13 +39,8 @@ impl IntegrationConfig {
         Ok(Self::new(
             &local_app_data,
             local_app_data.join("WinTerminalPP").join("integration"),
+            default_documents_dir(),
         ))
-    }
-
-    #[must_use]
-    pub fn with_target_mode(mut self, target_mode: TargetMode) -> Self {
-        self.target_mode = target_mode;
-        self
     }
 
     #[must_use]
@@ -59,12 +59,48 @@ impl IntegrationConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TargetMode {
-    /// Discover only channels whose settings file has already been initialized.
-    Auto,
-    /// Operate only on the explicitly supplied settings files.
-    Explicit(Vec<TerminalSettingsTarget>),
+/// Resolves the per-user `Documents` known folder, falling back to the
+/// environment when the Shell API is unavailable.
+fn default_documents_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(path) = crate::platform::windows::documents_directory() {
+            return path;
+        }
+    }
+
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let profile = PathBuf::from(profile);
+        let documents = profile.join("Documents");
+        if documents.is_dir() {
+            return documents;
+        }
+        if let Some(onedrive) = std::env::var_os("OneDrive") {
+            let onedrive_documents = PathBuf::from(onedrive).join("Documents");
+            if onedrive_documents.is_dir() {
+                return onedrive_documents;
+            }
+        }
+        return documents;
+    }
+    PathBuf::from(".")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShellKind {
+    WindowsPowerShell,
+    PowerShell,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIntegrationReport {
+    pub shell: ShellKind,
+    pub path: PathBuf,
+    pub status: ChangeStatus,
+    pub backup_path: Option<PathBuf>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,6 +174,7 @@ pub struct PlanReport {
     pub can_install: bool,
     pub fragment: FragmentReport,
     pub targets: Vec<TargetPlan>,
+    pub shell_integration: Vec<ShellIntegrationReport>,
     pub manifest_path: PathBuf,
     pub issues: Vec<String>,
 }
@@ -160,6 +197,7 @@ pub struct InstallReport {
     pub schema_version: u32,
     pub fragment: FragmentReport,
     pub targets: Vec<TargetInstallReport>,
+    pub shell_integration: Vec<ShellIntegrationReport>,
     pub manifest_path: PathBuf,
 }
 
@@ -180,6 +218,7 @@ pub struct UninstallReport {
     pub schema_version: u32,
     pub fragment_status: ChangeStatus,
     pub targets: Vec<TargetUninstallReport>,
+    pub shell_integration: Vec<ShellIntegrationReport>,
     pub manifest_path: PathBuf,
     pub manifest_retained: bool,
 }
@@ -204,6 +243,7 @@ pub struct DoctorReport {
     pub healthy: bool,
     pub fragment: FragmentReport,
     pub targets: Vec<DoctorTargetReport>,
+    pub shell_integration: Vec<ShellIntegrationReport>,
     pub manifest_path: PathBuf,
     pub manifest_valid: bool,
     pub issues: Vec<String>,

@@ -123,6 +123,36 @@ fn logical_key(virtual_key: u32) -> LogicalKey {
     }
 }
 
+/// Reverse of [`logical_key`] for the keys a Prefix chord may use.
+///
+/// Returns `None` for keys that cannot be injected (modifiers, Escape, and
+/// layout-specific keys) so callers fail closed instead of guessing.
+pub(super) fn virtual_key_for_logical_key(key: LogicalKey) -> Option<u16> {
+    Some(match key {
+        LogicalKey::Character(' ') => VK_SPACE as u16,
+        LogicalKey::Character(character @ 'a'..='z') => u16::from(character as u8 - b'a' + b'A'),
+        LogicalKey::Character(character @ '0'..='9') => u16::from(character as u8),
+        LogicalKey::Character(';') => VK_OEM_SEMICOLON as u16,
+        LogicalKey::Character('=') => VK_OEM_EQUALS as u16,
+        LogicalKey::Character(',') => VK_OEM_COMMA as u16,
+        LogicalKey::Character('-') => VK_OEM_MINUS as u16,
+        LogicalKey::Character('.') => VK_OEM_PERIOD as u16,
+        LogicalKey::Character('/') => VK_OEM_SLASH as u16,
+        LogicalKey::Character('`') => VK_OEM_BACKTICK as u16,
+        LogicalKey::Character('[') => VK_OEM_LEFT_BRACKET as u16,
+        LogicalKey::Character('\\') => VK_OEM_BACKSLASH as u16,
+        LogicalKey::Character(']') => VK_OEM_RIGHT_BRACKET as u16,
+        LogicalKey::Character('\'') => VK_OEM_QUOTE as u16,
+        LogicalKey::Arrow(Direction::Left) => VK_LEFT as u16,
+        LogicalKey::Arrow(Direction::Right) => VK_RIGHT as u16,
+        LogicalKey::Arrow(Direction::Up) => VK_UP as u16,
+        LogicalKey::Arrow(Direction::Down) => VK_DOWN as u16,
+        LogicalKey::Tab => VK_TAB as u16,
+        LogicalKey::Function(number @ 1..=12) => VK_F1 as u16 + u16::from(number) - 1,
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,10 +166,7 @@ mod tests {
             is_extended: false,
             is_alt_down: false,
             injected: false,
-            lower_integrity_injected: false,
-            injected_by_controller: false,
             timestamp_ms: 0,
-            extra_info: 0,
         }
     }
 
@@ -165,5 +192,23 @@ mod tests {
         assert_eq!(logical_key(VK_F12), LogicalKey::Function(12));
         assert_eq!(logical_key(u32::from(b'9')), LogicalKey::Character('9'));
         assert_eq!(logical_key(u32::from(b'Q')), LogicalKey::Character('q'));
+    }
+
+    #[test]
+    fn reverses_logical_keys_for_literal_prefix_replay() {
+        assert_eq!(
+            virtual_key_for_logical_key(LogicalKey::Character('b')),
+            Some(u32::from(b'B') as u16)
+        );
+        assert_eq!(
+            virtual_key_for_logical_key(LogicalKey::Arrow(Direction::Left)),
+            Some(VK_LEFT as u16)
+        );
+        assert_eq!(
+            virtual_key_for_logical_key(LogicalKey::Function(12)),
+            Some(VK_F12 as u16)
+        );
+        assert_eq!(virtual_key_for_logical_key(LogicalKey::Escape), None);
+        assert_eq!(virtual_key_for_logical_key(LogicalKey::Modifier), None);
     }
 }
